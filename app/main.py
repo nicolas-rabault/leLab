@@ -15,6 +15,9 @@ import time
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import queue
+import sys
+import signal
+import atexit
 
 # Import our custom recording functionality
 from .recording import (
@@ -479,11 +482,11 @@ async def shutdown_event():
     logger.info("✅ Cleanup completed")
 
 
-def main():
-    """Main entry point for the application"""
+def start_backend():
+    """Start the FastAPI backend server"""
     import uvicorn
     
-    logger.info("🚀 Starting LeLab FastAPI server...")
+    logger.info("🚀 Starting LeLab FastAPI backend server...")
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",
@@ -491,6 +494,95 @@ def main():
         reload=True,
         log_level="info"
     )
+
+def start_frontend():
+    """Start the Vite frontend development server"""
+    frontend_dir = Path(__file__).parent.parent / "frontend"
+    
+    if not frontend_dir.exists():
+        logger.error("❌ Frontend directory not found!")
+        return False
+    
+    logger.info("🎨 Starting Vite frontend development server...")
+    
+    try:
+        # Start npm dev process
+        process = subprocess.Popen(
+            ["npm", "run", "dev"],
+            cwd=frontend_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True
+        )
+        
+        # Stream output
+        for line in process.stdout:
+            print(f"[Frontend] {line.strip()}")
+            
+        return True
+    except subprocess.CalledProcessError as e:
+        logger.error(f"❌ Failed to start frontend: {e}")
+        return False
+    except FileNotFoundError:
+        logger.error("❌ npm not found. Please install Node.js and npm")
+        return False
+
+def start_both():
+    """Start both backend and frontend servers"""
+    logger.info("🚀 Starting both backend and frontend servers...")
+    
+    frontend_dir = Path(__file__).parent.parent / "frontend"
+    
+    if not frontend_dir.exists():
+        logger.error("❌ Frontend directory not found!")
+        start_backend()
+        return
+    
+    try:
+        # Start frontend process
+        logger.info("🎨 Starting Vite frontend development server...")
+        frontend_process = subprocess.Popen(
+            ["npm", "run", "dev"],
+            cwd=frontend_dir,
+        )
+        
+        # Give frontend a moment to start
+        time.sleep(2)
+        
+        # Start backend in the main thread
+        logger.info("🚀 Starting FastAPI backend server...")
+        start_backend()
+        
+    except FileNotFoundError:
+        logger.error("❌ npm not found. Please install Node.js and npm")
+        logger.info("🚀 Starting backend only...")
+        start_backend()
+    except Exception as e:
+        logger.error(f"❌ Error starting frontend: {e}")
+        logger.info("🚀 Starting backend only...")
+        start_backend()
+
+def main():
+    """Main entry point for the application"""
+    if len(sys.argv) > 1:
+        command = sys.argv[1]
+        
+        if command == "backend":
+            start_backend()
+        elif command == "frontend":
+            start_frontend()
+        elif command == "both" or command == "dev":
+            start_both()
+        else:
+            print("Usage: lelab [backend|frontend|both|dev]")
+            print("  backend  - Start only the FastAPI backend server")
+            print("  frontend - Start only the Vite frontend server")  
+            print("  both/dev - Start both backend and frontend servers")
+            print("  (no args) - Start both servers (default)")
+            sys.exit(1)
+    else:
+        # Default: start both servers
+        start_both()
 
 
 if __name__ == "__main__":

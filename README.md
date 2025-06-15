@@ -84,27 +84,35 @@ LeLab bridges the gap between LeRobot's powerful robotics capabilities and user-
 
 ### Running the Application
 
-1. **Start the backend server**
+After installation, you can use the `lelab` command-line tool:
 
-   ```bash
-   lelab
-   # or alternatively: python -m app.main
-   ```
+```bash
+# Start both backend and frontend (default)
+lelab
 
-   The API server will start on `http://localhost:8000`
+# Or explicitly start both servers
+lelab both
+# or
+lelab dev
 
-2. **Development: Start the frontend** (optional, for UI development)
+# Start only the backend server
+lelab backend
 
-   ```bash
-   cd frontend
-   npm run dev
-   ```
+# Start only the frontend development server
+lelab frontend
+```
 
-   The frontend dev server will start on `http://localhost:5173`
+**Command Options:**
 
-3. **Access the application**
-   - Production: Open `http://localhost:8000` in your browser
-   - Development: Open `http://localhost:5173` for hot-reload frontend
+- `lelab` or `lelab both` or `lelab dev` - Starts both FastAPI backend (port 8000) and Vite frontend (port 5173)
+- `lelab backend` - Starts only the FastAPI backend server on `http://localhost:8000`
+- `lelab frontend` - Starts only the Vite frontend development server on `http://localhost:5173`
+
+**Access the application:**
+
+- **Full-stack mode**: Visit `http://localhost:5173` (frontend) - it will proxy API calls to the backend
+- **Backend only**: Visit `http://localhost:8000` (serves both API and static frontend files)
+- **API documentation**: `http://localhost:8000/docs`
 
 ## 📖 API Documentation
 
