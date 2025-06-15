@@ -85,7 +85,7 @@ def setup_calibration_files(leader_config: str, follower_config: str):
     if not os.path.exists(follower_target_path):
         shutil.copy2(follower_config_full_path, follower_target_path)
         logger.info(f"Copied follower calibration to {follower_target_path}")
-
+    
     return leader_config_name, follower_config_name
 
 
@@ -433,6 +433,30 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
     robot.connect()
     if teleop is not None:
         teleop.connect()
+    
+    # Ensure calibration is properly loaded and applied to the devices
+    logger.info(f"Applying calibration to devices")
+    
+    # Write calibration to motors' memory (similar to teleoperation code)
+    if hasattr(robot, 'bus') and robot.calibration is not None:
+        try:
+            logger.info(f"Writing robot calibration to motors...")
+            robot.bus.write_calibration(robot.calibration)
+            logger.info(f"Robot calibration applied successfully")
+        except Exception as e:
+            logger.error(f"Error writing robot calibration: {e}")
+    else:
+        logger.warning(f"Robot bus or calibration not available - calibration may not be applied")
+        
+    if teleop is not None and hasattr(teleop, 'bus') and teleop.calibration is not None:
+        try:
+            logger.info(f"Writing teleop calibration to motors...")
+            teleop.bus.write_calibration(teleop.calibration)
+            logger.info(f"Teleop calibration applied successfully")
+        except Exception as e:
+            logger.error(f"Error writing teleop calibration: {e}")
+    else:
+        logger.warning(f"Teleop bus or calibration not available - calibration may not be applied")
 
     # Start with episode 1 - but track it properly
     current_episode = 1
@@ -474,6 +498,11 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
                 print(f"🟡 STATUS CHANGE: Recording phase interrupted by user - episode {current_episode} data collected")
                 # Reset our tracking flag
                 web_events["_exit_early_triggered"] = False
+            else:
+                # Recording completed due to timeout - trigger re-record behavior
+                logger.info("⏰ RECORDING PHASE COMPLETED DUE TO TIMEOUT - triggering re-record")
+                print(f"⏰ STATUS CHANGE: Recording timeout reached for episode {current_episode} - re-recording")
+                web_events["rerecord_episode"] = True
 
             # Handle rerecord logic first (before saving)
             if web_events["rerecord_episode"]:
