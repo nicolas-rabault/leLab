@@ -2,7 +2,14 @@ import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Square, SkipForward, RotateCcw, Play } from "lucide-react";
+import {
+  ArrowLeft,
+  Square,
+  SkipForward,
+  RotateCcw,
+  Play,
+  GraduationCap,
+} from "lucide-react";
 
 interface RecordingConfig {
   leader_port: string;
@@ -467,15 +474,31 @@ const Recording = () => {
 
           {currentPhase === "completed" && (
             <div className="text-center">
-              <p className="text-lg text-green-400 mb-4">
+              <p className="text-lg text-green-400 mb-6">
                 ✅ Recording session completed successfully!
               </p>
-              <Button
-                onClick={() => navigate("/")}
-                className="bg-blue-500 hover:bg-blue-600"
-              >
-                Return to Home
-              </Button>
+              <p className="text-gray-400 mb-6">
+                Dataset:{" "}
+                <span className="text-white font-semibold">
+                  {recordingConfig.dataset_repo_id}
+                </span>
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Button
+                  onClick={() => navigate("/training")}
+                  className="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-3 px-6 text-lg"
+                >
+                  <GraduationCap className="w-5 h-5 mr-2" />
+                  Start Training
+                </Button>
+                <Button
+                  onClick={() => navigate("/")}
+                  variant="outline"
+                  className="bg-transparent border-gray-600 text-gray-300 hover:bg-gray-800 hover:text-white py-3 px-6 text-lg"
+                >
+                  Return to Home
+                </Button>
+              </div>
             </div>
           )}
 

@@ -42,6 +42,16 @@ from .calibrating import (
     calibration_manager
 )
 
+# Import our custom training functionality
+from .training import (
+    TrainingRequest,
+    TrainingStatus,
+    handle_start_training,
+    handle_stop_training,
+    handle_training_status,
+    handle_training_logs
+)
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -307,6 +317,35 @@ def recording_rerecord_episode():
     return handle_rerecord_episode()
 
 
+# ============================================================================
+# TRAINING ENDPOINTS
+# ============================================================================
+
+@app.post("/start-training")
+def start_training(request: TrainingRequest):
+    """Start a training session"""
+    return handle_start_training(request)
+
+
+@app.post("/stop-training")
+def stop_training():
+    """Stop the current training session"""
+    return handle_stop_training()
+
+
+@app.get("/training-status")
+def training_status():
+    """Get the current training status"""
+    return handle_training_status()
+
+
+@app.get("/training-logs")
+def training_logs():
+    """Get recent training logs"""
+    return handle_training_logs()
+
+
+# ============================================================================
 # Calibration endpoints
 @app.post("/start-calibration")
 def start_calibration(request: CalibrationRequest):
