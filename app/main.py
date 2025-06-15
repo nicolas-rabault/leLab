@@ -2,22 +2,14 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import os
-import subprocess
-from pathlib import Path
 import logging
 import glob
-import json
 import asyncio
 from typing import List, Dict, Any
-import time
 import threading
-from concurrent.futures import ThreadPoolExecutor
 import queue
-import sys
-import signal
-import atexit
+from pathlib import Path
 
 # Import our custom recording functionality
 from .recording import (
@@ -26,7 +18,7 @@ from .recording import (
     handle_stop_recording,
     handle_exit_early,
     handle_rerecord_episode,
-    handle_recording_status
+    handle_recording_status,
 )
 
 # Import our custom teleoperation functionality
@@ -35,24 +27,19 @@ from .teleoperating import (
     handle_start_teleoperation,
     handle_stop_teleoperation,
     handle_teleoperation_status,
-    handle_get_joint_positions
+    handle_get_joint_positions,
 )
 
 # Import our custom calibration functionality
-from .calibrating import (
-    CalibrationRequest,
-    CalibrationStatus,
-    calibration_manager
-)
+from .calibrating import CalibrationRequest, calibration_manager
 
 # Import our custom training functionality
 from .training import (
     TrainingRequest,
-    TrainingStatus,
     handle_start_training,
     handle_stop_training,
     handle_training_status,
-    handle_training_logs
+    handle_training_logs,
 )
 
 # Import our custom replay functionality
@@ -61,7 +48,7 @@ from .replaying import (
     handle_start_replay,
     handle_stop_replay,
     handle_replay_status,
-    handle_replay_logs
+    handle_replay_logs,
 )
 
 
@@ -99,7 +86,7 @@ from .config import (
     CALIBRATION_BASE_PATH_TELEOP,
     CALIBRATION_BASE_PATH_ROBOTS,
     LEADER_CONFIG_PATH,
-    FOLLOWER_CONFIG_PATH
+    FOLLOWER_CONFIG_PATH,
 )
 
 
@@ -206,9 +193,6 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
-
-
-
 
 
 @app.get("/")
@@ -333,6 +317,7 @@ def recording_rerecord_episode():
 # TRAINING ENDPOINTS
 # ============================================================================
 
+
 @app.post("/start-training")
 def start_training(request: TrainingRequest):
     """Start a training session"""
@@ -360,6 +345,7 @@ def training_logs():
 # ============================================================================
 # REPLAY ENDPOINTS
 # ============================================================================
+
 
 @app.post("/start-replay")
 def start_replay(request: ReplayRequest):
@@ -403,6 +389,7 @@ def stop_calibration():
 def calibration_status():
     """Get current calibration status"""
     from dataclasses import asdict
+
     status = calibration_manager.get_status()
     return asdict(status)
 
@@ -424,12 +411,12 @@ def calibration_debug():
         queue_size = calibration_manager._input_queue.qsize()
         event_set = calibration_manager._input_ready.is_set()
         calibration_active = calibration_manager.status.calibration_active
-        
+
         return {
             "queue_size": queue_size,
             "event_set": event_set,
             "calibration_active": calibration_active,
-            "status": calibration_manager.status.status
+            "status": calibration_manager.status.status,
         }
     except Exception as e:
         return {"error": str(e)}
@@ -445,30 +432,28 @@ def get_calibration_configs(device_type: str):
             config_path = LEADER_CONFIG_PATH
         else:
             return {"success": False, "message": "Invalid device type"}
-        
+
         # Get all JSON files in the config directory
         configs = []
         if os.path.exists(config_path):
             for file in os.listdir(config_path):
-                if file.endswith('.json'):
+                if file.endswith(".json"):
                     config_name = os.path.splitext(file)[0]
                     file_path = os.path.join(config_path, file)
                     file_size = os.path.getsize(file_path)
                     modified_time = os.path.getmtime(file_path)
-                    
-                    configs.append({
-                        "name": config_name,
-                        "filename": file,
-                        "size": file_size,
-                        "modified": modified_time
-                    })
-        
-        return {
-            "success": True,
-            "configs": configs,
-            "device_type": device_type
-        }
-    
+
+                    configs.append(
+                        {
+                            "name": config_name,
+                            "filename": file,
+                            "size": file_size,
+                            "modified": modified_time,
+                        }
+                    )
+
+        return {"success": True, "configs": configs, "device_type": device_type}
+
     except Exception as e:
         logger.error(f"Error getting calibration configs: {e}")
         return {"success": False, "message": str(e)}
@@ -484,24 +469,24 @@ def delete_calibration_config(device_type: str, config_name: str):
             config_path = LEADER_CONFIG_PATH
         else:
             return {"success": False, "message": "Invalid device type"}
-        
+
         # Construct the file path
         filename = f"{config_name}.json"
         file_path = os.path.join(config_path, filename)
-        
+
         # Check if file exists
         if not os.path.exists(file_path):
             return {"success": False, "message": "Configuration file not found"}
-        
+
         # Delete the file
         os.remove(file_path)
         logger.info(f"Deleted calibration config: {file_path}")
-        
+
         return {
             "success": True,
-            "message": f"Configuration '{config_name}' deleted successfully"
+            "message": f"Configuration '{config_name}' deleted successfully",
         }
-    
+
     except Exception as e:
         logger.error(f"Error deleting calibration config: {e}")
         return {"success": False, "message": str(e)}
@@ -511,120 +496,14 @@ def delete_calibration_config(device_type: str, config_name: str):
 async def shutdown_event():
     """Clean up resources when FastAPI shuts down"""
     logger.info("🔄 FastAPI shutting down, cleaning up...")
-    
+
     # Stop any active recording - handled by recording module cleanup
-    
+
     # Clean up replay resources
     from .replaying import cleanup as replay_cleanup
+
     replay_cleanup()
-    
+
     if manager:
         manager.stop_broadcast_thread()
     logger.info("✅ Cleanup completed")
-
-
-def start_backend():
-    """Start the FastAPI backend server"""
-    import uvicorn
-    
-    logger.info("🚀 Starting LeLab FastAPI backend server...")
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
-
-def start_frontend():
-    """Start the Vite frontend development server"""
-    frontend_dir = Path(__file__).parent.parent / "frontend"
-    
-    if not frontend_dir.exists():
-        logger.error("❌ Frontend directory not found!")
-        return False
-    
-    logger.info("🎨 Starting Vite frontend development server...")
-    
-    try:
-        # Start npm dev process
-        process = subprocess.Popen(
-            ["npm", "run", "dev"],
-            cwd=frontend_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True
-        )
-        
-        # Stream output
-        for line in process.stdout:
-            print(f"[Frontend] {line.strip()}")
-            
-        return True
-    except subprocess.CalledProcessError as e:
-        logger.error(f"❌ Failed to start frontend: {e}")
-        return False
-    except FileNotFoundError:
-        logger.error("❌ npm not found. Please install Node.js and npm")
-        return False
-
-def start_both():
-    """Start both backend and frontend servers"""
-    logger.info("🚀 Starting both backend and frontend servers...")
-    
-    frontend_dir = Path(__file__).parent.parent / "frontend"
-    
-    if not frontend_dir.exists():
-        logger.error("❌ Frontend directory not found!")
-        start_backend()
-        return
-    
-    try:
-        # Start frontend process
-        logger.info("🎨 Starting Vite frontend development server...")
-        frontend_process = subprocess.Popen(
-            ["npm", "run", "dev"],
-            cwd=frontend_dir,
-        )
-        
-        # Give frontend a moment to start
-        time.sleep(2)
-        
-        # Start backend in the main thread
-        logger.info("🚀 Starting FastAPI backend server...")
-        start_backend()
-        
-    except FileNotFoundError:
-        logger.error("❌ npm not found. Please install Node.js and npm")
-        logger.info("🚀 Starting backend only...")
-        start_backend()
-    except Exception as e:
-        logger.error(f"❌ Error starting frontend: {e}")
-        logger.info("🚀 Starting backend only...")
-        start_backend()
-
-def main():
-    """Main entry point for the application"""
-    if len(sys.argv) > 1:
-        command = sys.argv[1]
-        
-        if command == "backend":
-            start_backend()
-        elif command == "frontend":
-            start_frontend()
-        elif command == "both" or command == "dev":
-            start_both()
-        else:
-            print("Usage: lelab [backend|frontend|both|dev]")
-            print("  backend  - Start only the FastAPI backend server")
-            print("  frontend - Start only the Vite frontend server")  
-            print("  both/dev - Start both backend and frontend servers")
-            print("  (no args) - Start both servers (default)")
-            sys.exit(1)
-    else:
-        # Default: start both servers
-        start_both()
-
-
-if __name__ == "__main__":
-    main()

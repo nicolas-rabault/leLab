@@ -16,11 +16,13 @@ dependencies = [
 ]
 
 [project.scripts]
-lelab = "app.main:main"
+lelab = "scripts.backend:main"
+"lelab-fullstack" = "scripts.fullstack:main"
+"lelab-frontend" = "scripts.frontend:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["app*"]
+include = ["app*", "scripts*"]
 
 [tool.setuptools.package-data]
 app = ["static/**/*"]
