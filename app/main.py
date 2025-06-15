@@ -18,6 +18,7 @@ import queue
 import sys
 import signal
 import atexit
+from .video import router as video_router
 
 # Import our custom recording functionality
 from .recording import (
@@ -65,6 +66,7 @@ connected_websockets: List[WebSocket] = []
 
 
 app = FastAPI()
+app.include_router(video_router)
 
 # Add CORS middleware
 app.add_middleware(
