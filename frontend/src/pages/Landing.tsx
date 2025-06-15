@@ -19,7 +19,14 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Camera, Mic, Settings, Wrench, GraduationCap } from "lucide-react";
+import {
+  Camera,
+  Mic,
+  Settings,
+  Wrench,
+  GraduationCap,
+  Play,
+} from "lucide-react";
 
 const Landing = () => {
   const [robotModel, setRobotModel] = useState("");
@@ -99,6 +106,12 @@ const Landing = () => {
   const handleTrainingClick = () => {
     if (robotModel) {
       navigate("/training");
+    }
+  };
+
+  const handleReplayClick = () => {
+    if (robotModel) {
+      navigate("/replay");
     }
   };
 
@@ -313,6 +326,14 @@ const Landing = () => {
           >
             <GraduationCap className="w-5 h-5 mr-2" />
             Training
+          </Button>
+          <Button
+            onClick={handleReplayClick}
+            disabled={!robotModel}
+            className="flex-1 bg-green-500 hover:bg-green-600 text-white text-lg py-6 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
+          >
+            <Play className="w-5 h-5 mr-2" />
+            Replay Dataset
           </Button>
         </div>
       </div>

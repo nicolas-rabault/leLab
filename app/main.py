@@ -55,6 +55,15 @@ from .training import (
     handle_training_logs
 )
 
+# Import our custom replay functionality
+from .replaying import (
+    ReplayRequest,
+    handle_start_replay,
+    handle_stop_replay,
+    handle_replay_status,
+    handle_replay_logs
+)
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -349,6 +358,34 @@ def training_logs():
 
 
 # ============================================================================
+# REPLAY ENDPOINTS
+# ============================================================================
+
+@app.post("/start-replay")
+def start_replay(request: ReplayRequest):
+    """Start a replay session"""
+    return handle_start_replay(request)
+
+
+@app.post("/stop-replay")
+def stop_replay():
+    """Stop the current replay session"""
+    return handle_stop_replay()
+
+
+@app.get("/replay-status")
+def replay_status():
+    """Get the current replay status"""
+    return handle_replay_status()
+
+
+@app.get("/replay-logs")
+def replay_logs():
+    """Get recent replay logs"""
+    return handle_replay_logs()
+
+
+# ============================================================================
 # Calibration endpoints
 @app.post("/start-calibration")
 def start_calibration(request: CalibrationRequest):
@@ -476,6 +513,10 @@ async def shutdown_event():
     logger.info("🔄 FastAPI shutting down, cleaning up...")
     
     # Stop any active recording - handled by recording module cleanup
+    
+    # Clean up replay resources
+    from .replaying import cleanup as replay_cleanup
+    replay_cleanup()
     
     if manager:
         manager.stop_broadcast_thread()
