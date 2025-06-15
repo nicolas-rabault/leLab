@@ -77,6 +77,7 @@ LeLab bridges the gap between LeRobot's powerful robotics capabilities and user-
    python -m venv .venv
    source .venv/bin/activate
    # If installing globally
+   # Note: Git-LFS required: brew install git-lfs
    pip install -e .
    ```
 
