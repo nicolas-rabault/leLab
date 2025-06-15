@@ -3,9 +3,9 @@ requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "so-101-test"
+name = "LeLab"
 version = "0.1.0"
-description = "LeRobot Lab - A web interface for robot learning with lerobot integration"
+description = "LeRobot Lab - A web interface for robotics with lerobot integration"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

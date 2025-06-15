@@ -73,6 +73,8 @@ LeLab bridges the gap between LeRobot's powerful robotics capabilities and user-
 2. **Install the Python backend**
 
    ```bash
+   python -m venv .venv
+   source .venv/bin/activate
    pip install -e .
    ```
 
