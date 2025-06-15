@@ -26,8 +26,8 @@ from .recording import (
     handle_recording_status
 )
 
-# Import our custom teleoperation/calibrating functionality
-from .calibrating import (
+# Import our custom teleoperation functionality
+from .teleoperating import (
     TeleoperateRequest,
     handle_start_teleoperation,
     handle_stop_teleoperation,
