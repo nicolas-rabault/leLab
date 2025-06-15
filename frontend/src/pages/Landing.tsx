@@ -19,7 +19,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Camera, Mic, Settings } from "lucide-react";
+import { Camera, Mic, Settings, Wrench } from "lucide-react";
 
 const Landing = () => {
   const [robotModel, setRobotModel] = useState("");
@@ -87,6 +87,12 @@ const Landing = () => {
     if (robotModel) {
       setShowRecordingModal(true);
       loadConfigs();
+    }
+  };
+
+  const handleCalibrationClick = () => {
+    if (robotModel) {
+      navigate("/calibration");
     }
   };
 
@@ -271,6 +277,14 @@ const Landing = () => {
             className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-lg py-6 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
           >
             Begin Session
+          </Button>
+          <Button
+            onClick={handleCalibrationClick}
+            disabled={!robotModel}
+            className="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-lg py-6 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
+          >
+            <Wrench className="w-5 h-5 mr-2" />
+            Calibration
           </Button>
           <Button
             onClick={handleTeleoperationClick}

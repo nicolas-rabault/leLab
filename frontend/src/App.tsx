@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound";
 import Landing from "./pages/Landing";
 import TeleoperationPage from "./pages/Teleoperation";
 import Recording from "./pages/Recording";
+import Calibration from "./pages/Calibration";
 import { UrdfProvider } from "./contexts/UrdfContext";
 
 const queryClient = new QueryClient();
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/control" element={<Index />} />
             <Route path="/teleoperation" element={<TeleoperationPage />} />
             <Route path="/recording" element={<Recording />} />
+            <Route path="/calibration" element={<Calibration />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

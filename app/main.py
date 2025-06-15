@@ -35,6 +35,13 @@ from .teleoperating import (
     handle_get_joint_positions
 )
 
+# Import our custom calibration functionality
+from .calibrating import (
+    CalibrationRequest,
+    CalibrationStatus,
+    calibration_manager
+)
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -298,6 +305,127 @@ def recording_exit_early():
 def recording_rerecord_episode():
     """Re-record current episode (replaces left arrow key)"""
     return handle_rerecord_episode()
+
+
+# Calibration endpoints
+@app.post("/start-calibration")
+def start_calibration(request: CalibrationRequest):
+    """Start calibration process"""
+    return calibration_manager.start_calibration(request)
+
+
+@app.post("/stop-calibration")
+def stop_calibration():
+    """Stop calibration process"""
+    return calibration_manager.stop_calibration_process()
+
+
+@app.get("/calibration-status")
+def calibration_status():
+    """Get current calibration status"""
+    from dataclasses import asdict
+    status = calibration_manager.get_status()
+    return asdict(status)
+
+
+@app.post("/calibration-input")
+def send_calibration_input(data: dict):
+    """Send input to the calibration process"""
+    input_text = data.get("input", "")
+    logger.info(f"🔵 API: Received input request: {repr(input_text)}")
+    result = calibration_manager.send_input(input_text)
+    logger.info(f"🔵 API: Returning result: {result}")
+    return result
+
+
+@app.get("/calibration-debug")
+def calibration_debug():
+    """Debug endpoint to check calibration state"""
+    try:
+        queue_size = calibration_manager._input_queue.qsize()
+        event_set = calibration_manager._input_ready.is_set()
+        calibration_active = calibration_manager.status.calibration_active
+        
+        return {
+            "queue_size": queue_size,
+            "event_set": event_set,
+            "calibration_active": calibration_active,
+            "status": calibration_manager.status.status
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/calibration-configs/{device_type}")
+def get_calibration_configs(device_type: str):
+    """Get all calibration config files for a specific device type"""
+    try:
+        if device_type == "robot":
+            config_path = FOLLOWER_CONFIG_PATH
+        elif device_type == "teleop":
+            config_path = LEADER_CONFIG_PATH
+        else:
+            return {"success": False, "message": "Invalid device type"}
+        
+        # Get all JSON files in the config directory
+        configs = []
+        if os.path.exists(config_path):
+            for file in os.listdir(config_path):
+                if file.endswith('.json'):
+                    config_name = os.path.splitext(file)[0]
+                    file_path = os.path.join(config_path, file)
+                    file_size = os.path.getsize(file_path)
+                    modified_time = os.path.getmtime(file_path)
+                    
+                    configs.append({
+                        "name": config_name,
+                        "filename": file,
+                        "size": file_size,
+                        "modified": modified_time
+                    })
+        
+        return {
+            "success": True,
+            "configs": configs,
+            "device_type": device_type
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting calibration configs: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@app.delete("/calibration-configs/{device_type}/{config_name}")
+def delete_calibration_config(device_type: str, config_name: str):
+    """Delete a calibration config file"""
+    try:
+        if device_type == "robot":
+            config_path = FOLLOWER_CONFIG_PATH
+        elif device_type == "teleop":
+            config_path = LEADER_CONFIG_PATH
+        else:
+            return {"success": False, "message": "Invalid device type"}
+        
+        # Construct the file path
+        filename = f"{config_name}.json"
+        file_path = os.path.join(config_path, filename)
+        
+        # Check if file exists
+        if not os.path.exists(file_path):
+            return {"success": False, "message": "Configuration file not found"}
+        
+        # Delete the file
+        os.remove(file_path)
+        logger.info(f"Deleted calibration config: {file_path}")
+        
+        return {
+            "success": True,
+            "message": f"Configuration '{config_name}' deleted successfully"
+        }
+    
+    except Exception as e:
+        logger.error(f"Error deleting calibration config: {e}")
+        return {"success": False, "message": str(e)}
 
 
 @app.on_event("shutdown")
