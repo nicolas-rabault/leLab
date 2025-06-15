@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robot Arm Control</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            padding: 1rem;
+        }
+        .main-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2rem;
+            max-width: 1400px;
+            width: 100%;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            flex: 1;
+            min-width: 400px;
+        }
+        
+        /* Responsive design for smaller screens */
+        @media (max-width: 900px) {
+            .main-container {
+                flex-direction: column;
+            }
+            .container {
+                min-width: 300px;
+            }
+        }
+        .input-group {
+            margin: 1rem 0;
+            text-align: left;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #333;
+            font-weight: bold;
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 0.5rem;
+            font-size: 1rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .input-group input[type="number"] {
+            width: 100%;
+        }
+        button {
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin: 0.5rem;
+        }
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .button-group button {
+            flex: 1;
+            min-width: 120px;
+        }
+        .record-button {
+            background-color: #dc3545;
+        }
+        .record-button:hover:not(:disabled) {
+            background-color: #c82333;
+        }
+        .record-button.recording {
+            background-color: #28a745;
+        }
+        .record-button.recording:hover:not(:disabled) {
+            background-color: #218838;
+        }
+        .stop-button {
+            background-color: #6c757d;
+        }
+        .stop-button:hover:not(:disabled) {
+            background-color: #5a6268;
+        }
+        .control-button {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .control-button:hover:not(:disabled) {
+            background-color: #e0a800;
+        }
+        #response, #recordingResponse {
+            margin-top: 1rem;
+            color: #666;
+            text-align: left;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .status-active {
+            border-left-color: #28a745 !important;
+        }
+        .status-error {
+            border-left-color: #dc3545 !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <!-- Teleoperation Section -->
+        <div class="container">
+            <h1>🤖 Teleoperation</h1>
+            <div class="input-group">
+                <label for="leaderPort">Leader Port:</label>
+                <input type="text" id="leaderPort" placeholder="/dev/tty.usbmodem5A460816621" value="/dev/tty.usbmodem5A460816621">
+            </div>
+            <div class="input-group">
+                <label for="leaderConfig">Leader Calibration Config:</label>
+                <select id="leaderConfig">
+                    <option value="">Loading configs...</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="followerPort">Follower Port:</label>
+                <input type="text" id="followerPort" placeholder="/dev/tty.usbmodem5A460816421" value="/dev/tty.usbmodem5A460816421">
+            </div>
+            <div class="input-group">
+                <label for="followerConfig">Follower Calibration Config:</label>
+                <select id="followerConfig">
+                    <option value="">Loading configs...</option>
+                </select>
+            </div>
+            <button id="teleoperationButton" onclick="toggleTeleoperation()">Start Teleoperation</button>
+            <div id="response"></div>
+        </div>
+
+        <!-- Recording Section -->
+        <div class="container">
+            <h1>📹 Recording</h1>
+            <div class="input-group">
+                <label for="recordLeaderPort">Leader Port:</label>
+                <input type="text" id="recordLeaderPort" placeholder="/dev/tty.usbmodem5A460816621" value="/dev/tty.usbmodem5A460816621">
+            </div>
+            <div class="input-group">
+                <label for="recordLeaderConfig">Leader Calibration Config:</label>
+                <select id="recordLeaderConfig">
+                    <option value="">Loading configs...</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="recordFollowerPort">Follower Port:</label>
+                <input type="text" id="recordFollowerPort" placeholder="/dev/tty.usbmodem5A460816421" value="/dev/tty.usbmodem5A460816421">
+            </div>
+            <div class="input-group">
+                <label for="recordFollowerConfig">Follower Calibration Config:</label>
+                <select id="recordFollowerConfig">
+                    <option value="">Loading configs...</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label for="datasetRepoId">Dataset Repository ID:</label>
+                <input type="text" id="datasetRepoId" placeholder="username/dataset_name" value="">
+            </div>
+            <div class="input-group">
+                <label for="singleTask">Task Name:</label>
+                <input type="text" id="singleTask" placeholder="e.g., pick_and_place" value="">
+            </div>
+            <div class="input-group">
+                <label for="numEpisodes">Number of Episodes:</label>
+                <input type="number" id="numEpisodes" min="1" max="100" value="5">
+            </div>
+            <div class="input-group">
+                <label for="episodeTimeS">Episode Time (seconds):</label>
+                <input type="number" id="episodeTimeS" min="5" max="300" value="30">
+            </div>
+            <div class="input-group">
+                <label for="resetTimeS">Reset Time (seconds):</label>
+                <input type="number" id="resetTimeS" min="1" max="60" value="10">
+            </div>
+            
+            <div class="button-group">
+                <button id="startRecordingButton" class="record-button" onclick="toggleRecording()">Start Recording</button>
+            </div>
+            
+            <div class="button-group" id="recordingControls" style="display: none;">
+                <button id="stopRecordingButton" class="stop-button" onclick="stopRecording()">Stop Recording</button>
+                <button id="skipEpisodeButton" class="control-button" onclick="skipToNextEpisode()">Skip Episode</button>
+                <button id="rerecordEpisodeButton" class="control-button" onclick="rerecordEpisode()">Re-record Episode</button>
+            </div>
+            
+            <div id="recordingResponse"></div>
+        </div>
+    </div>
+
+    <script>
+        let teleoperationActive = false;
+        let recordingActive = false;
+        let recordingStatusInterval = null;
+
+        // Load available configs when the page loads
+        window.onload = async function() {
+            await loadConfigs();
+            await checkInitialStatuses();
+        };
+
+        async function loadConfigs() {
+            try {
+                const response = await fetch('/get-configs');
+                const data = await response.json();
+                
+                const leaderSelect = document.getElementById('leaderConfig');
+                const followerSelect = document.getElementById('followerConfig');
+                const recordLeaderSelect = document.getElementById('recordLeaderConfig');
+                const recordFollowerSelect = document.getElementById('recordFollowerConfig');
+                
+                // Clear loading message
+                [leaderSelect, followerSelect, recordLeaderSelect, recordFollowerSelect].forEach(select => {
+                    select.innerHTML = '';
+                });
+                
+                // Add options for leader configs
+                data.leader_configs.forEach(config => {
+                    [leaderSelect, recordLeaderSelect].forEach(select => {
+                        const option = document.createElement('option');
+                        option.value = config;
+                        option.textContent = config;
+                        select.appendChild(option);
+                    });
+                });
+                
+                // Add options for follower configs
+                data.follower_configs.forEach(config => {
+                    [followerSelect, recordFollowerSelect].forEach(select => {
+                        const option = document.createElement('option');
+                        option.value = config;
+                        option.textContent = config;
+                        select.appendChild(option);
+                    });
+                });
+            } catch (error) {
+                document.getElementById('response').textContent = 'Error loading configs: ' + error.message;
+            }
+        }
+
+        async function checkInitialStatuses() {
+            await checkTeleoperationStatus();
+            await checkRecordingStatus();
+        }
+
+        async function checkTeleoperationStatus() {
+            try {
+                const response = await fetch('/teleoperation-status');
+                const data = await response.json();
+                teleoperationActive = data.teleoperation_active;
+                updateTeleoperationUI();
+            } catch (error) {
+                console.error('Error checking teleoperation status:', error);
+            }
+        }
+
+        async function checkRecordingStatus() {
+            try {
+                const response = await fetch('/recording-status');
+                const data = await response.json();
+                recordingActive = data.recording_active;
+                updateRecordingUI();
+                
+                if (recordingActive && !recordingStatusInterval) {
+                    startRecordingStatusPolling();
+                } else if (!recordingActive && recordingStatusInterval) {
+                    stopRecordingStatusPolling();
+                }
+            } catch (error) {
+                console.error('Error checking recording status:', error);
+            }
+        }
+
+        function startRecordingStatusPolling() {
+            recordingStatusInterval = setInterval(checkRecordingStatus, 2000);
+        }
+
+        function stopRecordingStatusPolling() {
+            if (recordingStatusInterval) {
+                clearInterval(recordingStatusInterval);
+                recordingStatusInterval = null;
+            }
+        }
+
+        function updateTeleoperationUI() {
+            const button = document.getElementById('teleoperationButton');
+            if (teleoperationActive) {
+                button.textContent = 'Stop Teleoperation';
+                button.style.backgroundColor = '#28a745';
+            } else {
+                button.textContent = 'Start Teleoperation';
+                button.style.backgroundColor = '#007bff';
+            }
+            button.disabled = recordingActive; // Disable if recording is active
+        }
+
+        function updateRecordingUI() {
+            const startButton = document.getElementById('startRecordingButton');
+            const controls = document.getElementById('recordingControls');
+            const inputs = document.querySelectorAll('#recordLeaderPort, #recordLeaderConfig, #recordFollowerPort, #recordFollowerConfig, #datasetRepoId, #singleTask, #numEpisodes, #episodeTimeS, #resetTimeS');
+            
+            if (recordingActive) {
+                startButton.textContent = 'Recording...';
+                startButton.className = 'record-button recording';
+                startButton.disabled = true;
+                controls.style.display = 'flex';
+                
+                // Disable all input fields during recording
+                inputs.forEach(input => input.disabled = true);
+            } else {
+                startButton.textContent = 'Start Recording';
+                startButton.className = 'record-button';
+                startButton.disabled = false;
+                controls.style.display = 'none';
+                
+                // Enable all input fields when not recording
+                inputs.forEach(input => input.disabled = false);
+            }
+
+            // Update button states based on validation
+            updateRecordingButtonStates();
+        }
+
+        function updateRecordingButtonStates() {
+            const startButton = document.getElementById('startRecordingButton');
+            
+            if (!recordingActive) {
+                const isValid = validateRecordingInputs();
+                startButton.disabled = !isValid || teleoperationActive;
+                
+                if (!isValid) {
+                    startButton.title = 'Please fill in all required fields';
+                } else if (teleoperationActive) {
+                    startButton.title = 'Stop teleoperation before starting recording';
+                } else {
+                    startButton.title = '';
+                }
+            }
+        }
+
+        function validateRecordingInputs() {
+            const requiredFields = [
+                'recordLeaderPort', 'recordLeaderConfig', 'recordFollowerPort', 
+                'recordFollowerConfig', 'datasetRepoId', 'singleTask'
+            ];
+            
+            return requiredFields.every(fieldId => {
+                const value = document.getElementById(fieldId).value.trim();
+                return value !== '';
+            });
+        }
+
+        // Add event listeners to update button states when inputs change
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('#recordLeaderPort, #recordLeaderConfig, #recordFollowerPort, #recordFollowerConfig, #datasetRepoId, #singleTask');
+            inputs.forEach(input => {
+                input.addEventListener('input', updateRecordingButtonStates);
+                input.addEventListener('change', updateRecordingButtonStates);
+            });
+        });
+
+        async function toggleTeleoperation() {
+            if (teleoperationActive) {
+                await stopTeleoperation();
+            } else {
+                await startTeleoperation();
+            }
+        }
+
+        async function startTeleoperation() {
+            const followerPort = document.getElementById('followerPort').value;
+            const leaderPort = document.getElementById('leaderPort').value;
+            const leaderConfig = document.getElementById('leaderConfig').value;
+            const followerConfig = document.getElementById('followerConfig').value;
+            
+            if (!leaderConfig || !followerConfig) {
+                showResponse('response', 'Please select calibration configs for both leader and follower', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/move-arm', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        leader_port: leaderPort,
+                        follower_port: followerPort,
+                        leader_config: leaderConfig,
+                        follower_config: followerConfig
+                    })
+                });
+                const data = await response.json();
+                showResponse('response', data.message, data.success ? 'success' : 'error');
+                
+                if (data.success) {
+                    teleoperationActive = true;
+                    updateTeleoperationUI();
+                }
+            } catch (error) {
+                showResponse('response', 'Error: ' + error.message, 'error');
+            }
+        }
+
+        async function stopTeleoperation() {
+            try {
+                const response = await fetch('/stop-teleoperation', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResponse('response', data.message, data.success ? 'success' : 'error');
+                
+                if (data.success) {
+                    teleoperationActive = false;
+                    updateTeleoperationUI();
+                }
+            } catch (error) {
+                showResponse('response', 'Error: ' + error.message, 'error');
+            }
+        }
+
+        async function toggleRecording() {
+            if (!validateRecordingInputs()) {
+                showResponse('recordingResponse', 'Please fill in all required fields', 'error');
+                return;
+            }
+
+            const leaderPort = document.getElementById('recordLeaderPort').value;
+            const followerPort = document.getElementById('recordFollowerPort').value;
+            const leaderConfig = document.getElementById('recordLeaderConfig').value;
+            const followerConfig = document.getElementById('recordFollowerConfig').value;
+            const datasetRepoId = document.getElementById('datasetRepoId').value;
+            const singleTask = document.getElementById('singleTask').value;
+            const numEpisodes = parseInt(document.getElementById('numEpisodes').value);
+            const episodeTimeS = parseInt(document.getElementById('episodeTimeS').value);
+            const resetTimeS = parseInt(document.getElementById('resetTimeS').value);
+            
+            try {
+                const response = await fetch('/start-recording', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        leader_port: leaderPort,
+                        follower_port: followerPort,
+                        leader_config: leaderConfig,
+                        follower_config: followerConfig,
+                        dataset_repo_id: datasetRepoId,
+                        single_task: singleTask,
+                        num_episodes: numEpisodes,
+                        episode_time_s: episodeTimeS,
+                        reset_time_s: resetTimeS,
+                        fps: 30,
+                        video: true,
+                        push_to_hub: false,
+                        resume: false
+                    })
+                });
+                const data = await response.json();
+                showResponse('recordingResponse', data.message, data.success ? 'success' : 'error');
+                
+                if (data.success) {
+                    recordingActive = true;
+                    updateRecordingUI();
+                    startRecordingStatusPolling();
+                }
+            } catch (error) {
+                showResponse('recordingResponse', 'Error: ' + error.message, 'error');
+            }
+        }
+
+        async function stopRecording() {
+            try {
+                const response = await fetch('/stop-recording', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResponse('recordingResponse', data.message, data.success ? 'success' : 'error');
+            } catch (error) {
+                showResponse('recordingResponse', 'Error: ' + error.message, 'error');
+            }
+        }
+
+        async function skipToNextEpisode() {
+            try {
+                const response = await fetch('/recording-exit-early', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResponse('recordingResponse', data.message, data.success ? 'success' : 'error');
+            } catch (error) {
+                showResponse('recordingResponse', 'Error: ' + error.message, 'error');
+            }
+        }
+
+        async function rerecordEpisode() {
+            try {
+                const response = await fetch('/recording-rerecord-episode', {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                showResponse('recordingResponse', data.message, data.success ? 'success' : 'error');
+            } catch (error) {
+                showResponse('recordingResponse', 'Error: ' + error.message, 'error');
+            }
+        }
+
+        function showResponse(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.textContent = message;
+            element.className = type === 'success' ? 'status-active' : type === 'error' ? 'status-error' : '';
+        }
+
+        // Initialize event listeners when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add input validation listeners
+            const recordInputs = document.querySelectorAll('#recordLeaderPort, #recordLeaderConfig, #recordFollowerPort, #recordFollowerConfig, #datasetRepoId, #singleTask');
+            recordInputs.forEach(input => {
+                input.addEventListener('input', updateRecordingButtonStates);
+                input.addEventListener('change', updateRecordingButtonStates);
+            });
+        });
+    </script>
+</body>
+</html> 
+
