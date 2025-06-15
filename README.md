@@ -80,12 +80,6 @@ LeLab bridges the gap between LeRobot's powerful robotics capabilities and user-
    pip install -e .
    ```
 
-3. **Install frontend dependencies** (for development)
-   ```bash
-   cd frontend
-   npm install
-   ```
-
 ### Running the Application
 
 After installation, you can use the `lelab` command-line tools:
