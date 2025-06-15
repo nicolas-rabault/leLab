@@ -87,6 +87,12 @@ from .config import (
     CALIBRATION_BASE_PATH_ROBOTS,
     LEADER_CONFIG_PATH,
     FOLLOWER_CONFIG_PATH,
+    find_available_ports,
+    find_robot_port,
+    detect_port_after_disconnect,
+    save_robot_port,
+    get_saved_robot_port,
+    get_default_robot_port,
 )
 
 
@@ -490,6 +496,78 @@ def delete_calibration_config(device_type: str, config_name: str):
     except Exception as e:
         logger.error(f"Error deleting calibration config: {e}")
         return {"success": False, "message": str(e)}
+
+
+# ============================================================================
+# PORT DETECTION ENDPOINTS
+# ============================================================================
+
+@app.get("/available-ports")
+def get_available_ports():
+    """Get all available serial ports"""
+    try:
+        ports = find_available_ports()
+        return {"status": "success", "ports": ports}
+    except Exception as e:
+        logger.error(f"Error getting available ports: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/start-port-detection")
+def start_port_detection(data: dict):
+    """Start port detection process for a robot"""
+    try:
+        robot_type = data.get("robot_type", "robot")
+        result = find_robot_port(robot_type)
+        return {"status": "success", "data": result}
+    except Exception as e:
+        logger.error(f"Error starting port detection: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/detect-port-after-disconnect")
+def detect_port_after_disconnect_endpoint(data: dict):
+    """Detect port after disconnection"""
+    try:
+        ports_before = data.get("ports_before", [])
+        detected_port = detect_port_after_disconnect(ports_before)
+        return {"status": "success", "port": detected_port}
+    except Exception as e:
+        logger.error(f"Error detecting port: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/save-robot-port")
+def save_robot_port_endpoint(data: dict):
+    """Save a robot port for future use"""
+    try:
+        robot_type = data.get("robot_type")
+        port = data.get("port")
+        
+        if not robot_type or not port:
+            return {"status": "error", "message": "robot_type and port are required"}
+        
+        save_robot_port(robot_type, port)
+        return {"status": "success", "message": f"Port {port} saved for {robot_type}"}
+    except Exception as e:
+        logger.error(f"Error saving robot port: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/robot-port/{robot_type}")
+def get_robot_port(robot_type: str):
+    """Get the saved port for a robot type"""
+    try:
+        saved_port = get_saved_robot_port(robot_type)
+        default_port = get_default_robot_port(robot_type)
+        return {
+            "status": "success", 
+            "saved_port": saved_port,
+            "default_port": default_port
+        }
+    except Exception as e:
+        logger.error(f"Error getting robot port: {e}")
+        return {"status": "error", "message": str(e)}
 
 
 @app.on_event("shutdown")

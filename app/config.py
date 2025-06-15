@@ -1,6 +1,9 @@
 import os
 import shutil
 import logging
+import platform
+import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +17,10 @@ CALIBRATION_BASE_PATH_ROBOTS = os.path.expanduser(
 LEADER_CONFIG_PATH = os.path.join(CALIBRATION_BASE_PATH_TELEOP, "so101_leader")
 FOLLOWER_CONFIG_PATH = os.path.join(CALIBRATION_BASE_PATH_ROBOTS, "so101_follower") 
 
+# Define port storage path
+PORT_CONFIG_PATH = os.path.expanduser("~/.cache/huggingface/lerobot/ports")
+LEADER_PORT_FILE = os.path.join(PORT_CONFIG_PATH, "leader_port.txt")
+FOLLOWER_PORT_FILE = os.path.join(PORT_CONFIG_PATH, "follower_port.txt")
 
 def setup_calibration_files(leader_config: str, follower_config: str):
     """Setup calibration files in the correct locations for teleoperation and recording"""
@@ -91,3 +98,132 @@ def setup_follower_calibration_file(follower_config: str):
         logger.info(f"Follower calibration already exists at {follower_target_path}")
 
     return follower_config_name
+
+
+def find_available_ports():
+    """Find all available serial ports on the system"""
+    try:
+        from serial.tools import list_ports  # Part of pyserial library
+    except ImportError:
+        raise ImportError("pyserial library is required. Install it with: pip install pyserial")
+
+    if platform.system() == "Windows":
+        # List COM ports using pyserial
+        ports = [port.device for port in list_ports.comports()]
+    else:  # Linux/macOS
+        # List /dev/tty* ports for Unix-based systems
+        ports = [str(path) for path in Path("/dev").glob("tty*")]
+    return sorted(ports)
+
+
+def find_robot_port(robot_type="robot"):
+    """
+    Find the port for a robot by detecting the difference when disconnecting/reconnecting
+    
+    Args:
+        robot_type (str): Type of robot ("leader" or "follower" or generic "robot")
+    
+    Returns:
+        str: The detected port
+    """
+    logger.info(f"Finding port for {robot_type}")
+    
+    # Get initial ports
+    ports_before = find_available_ports()
+    logger.info(f"Ports before disconnecting: {ports_before}")
+    
+    # This function returns the port detection logic, but the actual user interaction
+    # should be handled by the frontend
+    return {
+        "ports_before": ports_before,
+        "robot_type": robot_type
+    }
+
+
+def detect_port_after_disconnect(ports_before):
+    """
+    Detect the port after disconnection by comparing with ports before
+    
+    Args:
+        ports_before (list): List of ports before disconnection
+    
+    Returns:
+        str: The detected port
+    """
+    time.sleep(0.5)  # Allow some time for port to be released
+    ports_after = find_available_ports()
+    ports_diff = list(set(ports_before) - set(ports_after))
+    
+    logger.info(f"Ports after disconnecting: {ports_after}")
+    logger.info(f"Port difference: {ports_diff}")
+    
+    if len(ports_diff) == 1:
+        port = ports_diff[0]
+        logger.info(f"Detected port: {port}")
+        return port
+    elif len(ports_diff) == 0:
+        raise OSError("Could not detect the port. No difference was found.")
+    else:
+        raise OSError(f"Could not detect the port. More than one port was found ({ports_diff}).")
+
+
+def save_robot_port(robot_type, port):
+    """
+    Save the robot port to a file for future use
+    
+    Args:
+        robot_type (str): "leader" or "follower"
+        port (str): The port to save
+    """
+    # Create port config directory if it doesn't exist
+    os.makedirs(PORT_CONFIG_PATH, exist_ok=True)
+    
+    port_file = LEADER_PORT_FILE if robot_type == "leader" else FOLLOWER_PORT_FILE
+    
+    with open(port_file, 'w') as f:
+        f.write(port)
+    
+    logger.info(f"Saved {robot_type} port: {port}")
+
+
+def get_saved_robot_port(robot_type):
+    """
+    Get the saved robot port from file
+    
+    Args:
+        robot_type (str): "leader" or "follower"
+    
+    Returns:
+        str or None: The saved port, or None if not found
+    """
+    port_file = LEADER_PORT_FILE if robot_type == "leader" else FOLLOWER_PORT_FILE
+    
+    if os.path.exists(port_file):
+        with open(port_file, 'r') as f:
+            port = f.read().strip()
+            logger.info(f"Retrieved saved {robot_type} port: {port}")
+            return port
+    
+    logger.info(f"No saved port found for {robot_type}")
+    return None
+
+
+def get_default_robot_port(robot_type):
+    """
+    Get the default port for a robot, checking saved ports first
+    
+    Args:
+        robot_type (str): "leader" or "follower"
+    
+    Returns:
+        str: The default port to use
+    """
+    saved_port = get_saved_robot_port(robot_type)
+    if saved_port:
+        return saved_port
+    
+    # Fallback to common default ports
+    if platform.system() == "Windows":
+        return "COM3"  # Common Windows default
+    else:
+        return "/dev/ttyUSB0"  # Common Linux/macOS default
