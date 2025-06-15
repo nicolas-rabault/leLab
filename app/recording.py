@@ -54,6 +54,16 @@ class RecordingRequest(BaseModel):
     resume: bool = False
 
 
+class UploadRequest(BaseModel):
+    dataset_repo_id: str
+    tags: list[str] = []
+    private: bool = False
+
+
+class DatasetInfoRequest(BaseModel):
+    dataset_repo_id: str
+
+
 
 
 def create_record_config(request: RecordingRequest) -> RecordConfig:
@@ -342,6 +352,93 @@ def add_timestamp_modifier():
 def add_debug_info_modifier():
     """Placeholder for debug info modifier"""
     logger.info("Debug info modifier registered (not yet implemented in simplified version)")
+
+
+def handle_get_dataset_info(request: DatasetInfoRequest) -> Dict[str, Any]:
+    """Get information about a saved dataset"""
+    try:
+        # Import LeRobotDataset to load the dataset
+        from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+        import time
+        
+        logger.info(f"Loading dataset {request.dataset_repo_id} to get info")
+        
+        # Load the dataset from local storage
+        dataset = LeRobotDataset(request.dataset_repo_id)
+        
+        logger.info(f"Dataset loaded with {dataset.num_episodes} episodes")
+        
+        # Get dataset metadata
+        dataset_info = {
+            "success": True,
+            "dataset_repo_id": request.dataset_repo_id,
+            "num_episodes": dataset.num_episodes,
+            "single_task": getattr(dataset.meta, 'single_task', 'Unknown task'),
+            "fps": dataset.fps,
+            "features": list(dataset.features.keys()),
+            "total_frames": dataset.total_frames,
+            "robot_type": getattr(dataset.meta, 'robot_type', 'Unknown robot'),
+        }
+        
+        # Try to get task information from the first episode if available
+        if dataset.num_episodes > 0:
+            try:
+                first_episode = dataset[0]
+                if 'task' in first_episode:
+                    dataset_info["single_task"] = first_episode['task'][0] if len(first_episode['task']) > 0 else dataset_info["single_task"]
+            except Exception as e:
+                logger.warning(f"Could not extract task from first episode: {e}")
+        
+        logger.info(f"Dataset info retrieved: {dataset_info}")
+        return dataset_info
+        
+    except Exception as e:
+        logger.error(f"Error loading dataset {request.dataset_repo_id}: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return {
+            "success": False,
+            "message": f"Failed to load dataset: {str(e)}"
+        }
+
+
+def handle_upload_dataset(request: UploadRequest) -> Dict[str, Any]:
+    """Handle dataset upload to HuggingFace Hub"""
+    try:
+        # Import LeRobotDataset to load and upload the dataset
+        from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+        
+        logger.info(f"Loading dataset {request.dataset_repo_id} for upload")
+        
+        # Load the dataset from local storage
+        dataset = LeRobotDataset(request.dataset_repo_id)
+        
+        logger.info(f"Dataset loaded with {dataset.num_episodes} episodes")
+        logger.info(f"Uploading to HuggingFace Hub with tags: {request.tags}, private: {request.private}")
+        
+        # Upload dataset to HuggingFace Hub
+        dataset.push_to_hub(
+            tags=request.tags,
+            private=request.private
+        )
+        
+        logger.info(f"Dataset {request.dataset_repo_id} uploaded successfully to HuggingFace Hub")
+        
+        return {
+            "success": True,
+            "message": f"Dataset {request.dataset_repo_id} uploaded successfully to HuggingFace Hub",
+            "dataset_url": f"https://huggingface.co/datasets/{request.dataset_repo_id}",
+            "num_episodes": dataset.num_episodes
+        }
+        
+    except Exception as e:
+        logger.error(f"Error uploading dataset {request.dataset_repo_id}: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        return {
+            "success": False,
+            "message": f"Failed to upload dataset: {str(e)}"
+        }
 
 
 def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDataset:

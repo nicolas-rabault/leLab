@@ -14,11 +14,15 @@ from pathlib import Path
 # Import our custom recording functionality
 from .recording import (
     RecordingRequest,
+    UploadRequest,
+    DatasetInfoRequest,
     handle_start_recording,
     handle_stop_recording,
     handle_exit_early,
     handle_rerecord_episode,
     handle_recording_status,
+    handle_upload_dataset,
+    handle_get_dataset_info,
 )
 
 # Import our custom teleoperation functionality
@@ -317,6 +321,18 @@ def recording_exit_early():
 def recording_rerecord_episode():
     """Re-record current episode (replaces left arrow key)"""
     return handle_rerecord_episode()
+
+
+@app.post("/upload-dataset")
+def upload_dataset(request: UploadRequest):
+    """Upload dataset to HuggingFace Hub"""
+    return handle_upload_dataset(request)
+
+
+@app.post("/dataset-info")
+def get_dataset_info(request: DatasetInfoRequest):
+    """Get information about a saved dataset"""
+    return handle_get_dataset_info(request)
 
 
 # ============================================================================
