@@ -88,42 +88,33 @@ LeLab bridges the gap between LeRobot's powerful robotics capabilities and user-
 
 ### Running the Application
 
-After installation, you can use the `lelab` command-line tool:
+After installation, you can use the `lelab` command-line tools:
 
 ```bash
-# Start both backend and frontend (default)
+# Start only the backend server (default)
 lelab
 
-# Or explicitly start both servers
-lelab both
-# or
-lelab dev
-
-# Start only the backend server
-lelab backend
+# Start both backend and frontend servers
+lelab-fullstack
 
 # Start only the frontend development server
-lelab frontend
+lelab-frontend
 ```
 
 **Command Options:**
 
-- `lelab` or `lelab both` or `lelab dev` - Starts both FastAPI backend (port 8000) and Vite frontend (port 5173)
-- `lelab backend` - Starts only the FastAPI backend server on `http://localhost:8000`
-- `lelab frontend` - Starts only the Vite frontend development server on `http://localhost:5173`
+- `lelab` - Starts only the FastAPI backend server on `http://localhost:8000`
+- `lelab-fullstack` - Starts both FastAPI backend (port 8000) and Vite frontend (port 8080) with auto-browser opening
+- `lelab-frontend` - Starts only the frontend development server with auto-browser opening
 
-**Access the application:**
+**Frontend Repository:**
 
-- **Full-stack mode**: Visit `http://localhost:5173` (frontend) - it will proxy API calls to the backend
-- **Backend only**: Visit `http://localhost:8000` (serves both API and static frontend files)
-- **API documentation**: `http://localhost:8000/docs`
+The frontend is automatically cloned from [lelab-frontend-dev](https://github.com/amtellezfernandez/lelab-frontend-dev.git) when you run `lelab-frontend` or `lelab-fullstack`. The system will:
 
-## 📖 API Documentation
-
-Once the server is running, visit:
-
-- **Interactive API docs**: `http://localhost:8000/docs`
-- **OpenAPI spec**: `http://localhost:8000/openapi.json`
+1. Check if the frontend already exists in the parent directory
+2. Clone the repository if it doesn't exist
+3. Install dependencies with `npm install`
+4. Start the development server and auto-open your browser
 
 ### Key Endpoints
 
@@ -139,22 +130,28 @@ Once the server is running, visit:
 
 ```
 leLab/
-├── app/                    # FastAPI backend
-│   ├── main.py            # Main FastAPI application
-│   ├── recording.py       # Dataset recording logic
-│   ├── calibrating.py     # Robot calibration
-│   ├── config.py          # Configuration management
-│   └── static/            # Static web files
-├── frontend/              # React frontend
+├── app/                      # FastAPI backend
+│   ├── main.py              # Main FastAPI application
+│   ├── recording.py         # Dataset recording logic
+│   ├── teleoperating.py     # Robot teleoperation logic
+│   ├── calibrating.py       # Robot calibration logic
+│   ├── training.py          # ML training logic
+│   ├── config.py            # Configuration management
+│   ├── scripts/             # Command-line scripts
+│   │   ├── backend.py       # Backend-only startup
+│   │   ├── frontend.py      # Frontend-only startup
+│   │   └── fullstack.py     # Full-stack startup
+│   └── static/              # Static web files
+├── ../lelab-frontend-dev/   # React frontend (auto-cloned)
 │   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── pages/         # Page components
-│   │   ├── hooks/         # Custom React hooks
-│   │   └── contexts/      # React contexts
-│   ├── public/            # Static assets
-│   └── package.json       # Frontend dependencies
-├── pyproject.toml         # Python project configuration
-└── README.md             # This file
+│   │   ├── components/      # React components
+│   │   ├── pages/           # Page components
+│   │   ├── hooks/           # Custom React hooks
+│   │   └── contexts/        # React contexts
+│   ├── public/              # Static assets
+│   └── package.json         # Frontend dependencies
+├── pyproject.toml           # Python project configuration
+└── README.md               # This file
 ```
 
 ## 🔧 Development
@@ -165,18 +162,30 @@ leLab/
 # Install in editable mode
 pip install -e .
 
-# Run with auto-reload
-python -m app.main
+# Run backend only with auto-reload
+lelab
 ```
 
 ### Frontend Development
 
 ```bash
-cd frontend
-npm run dev          # Development server
-npm run build        # Production build
-npm run preview      # Preview production build
+# Automatically clones, installs deps, and starts dev server
+lelab-frontend
 ```
+
+### Full-Stack Development
+
+```bash
+# Start both backend and frontend with auto-reload
+lelab-fullstack
+```
+
+**Development Notes:**
+
+- The frontend repository is automatically managed (cloned/updated)
+- Both commands auto-open your browser to the appropriate URL
+- Backend runs on `http://localhost:8000`
+- Frontend runs on `http://localhost:8080` with API proxying
 
 ## 🤝 Contributing
 
