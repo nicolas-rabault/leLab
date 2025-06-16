@@ -22,6 +22,11 @@ PORT_CONFIG_PATH = os.path.expanduser("~/.cache/huggingface/lerobot/ports")
 LEADER_PORT_FILE = os.path.join(PORT_CONFIG_PATH, "leader_port.txt")
 FOLLOWER_PORT_FILE = os.path.join(PORT_CONFIG_PATH, "follower_port.txt")
 
+# Define configuration storage path
+CONFIG_STORAGE_PATH = os.path.expanduser("~/.cache/huggingface/lerobot/saved_configs")
+LEADER_CONFIG_FILE = os.path.join(CONFIG_STORAGE_PATH, "leader_config.txt")
+FOLLOWER_CONFIG_FILE = os.path.join(CONFIG_STORAGE_PATH, "follower_config.txt")
+
 def setup_calibration_files(leader_config: str, follower_config: str):
     """Setup calibration files in the correct locations for teleoperation and recording"""
     # Extract config names from file paths (remove .json extension)
@@ -227,3 +232,71 @@ def get_default_robot_port(robot_type):
         return "COM3"  # Common Windows default
     else:
         return "/dev/ttyUSB0"  # Common Linux/macOS default
+
+
+def save_robot_config(robot_type: str, config_name: str):
+    """Save the robot configuration to a file for future use"""
+    try:
+        # Create the config storage directory if it doesn't exist
+        os.makedirs(CONFIG_STORAGE_PATH, exist_ok=True)
+        
+        # Determine the config file path
+        if robot_type.lower() == "leader":
+            config_file_path = LEADER_CONFIG_FILE
+        elif robot_type.lower() == "follower":
+            config_file_path = FOLLOWER_CONFIG_FILE
+        else:
+            logger.error(f"Unknown robot type: {robot_type}")
+            return False
+            
+        # Write the config name to file
+        with open(config_file_path, 'w') as f:
+            f.write(config_name.strip())
+            
+        logger.info(f"Saved {robot_type} configuration: {config_name}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error saving {robot_type} configuration: {e}")
+        return False
+
+
+def get_saved_robot_config(robot_type: str):
+    """Get the saved robot configuration from file"""
+    try:
+        # Determine the config file path
+        if robot_type.lower() == "leader":
+            config_file_path = LEADER_CONFIG_FILE
+        elif robot_type.lower() == "follower":
+            config_file_path = FOLLOWER_CONFIG_FILE
+        else:
+            logger.error(f"Unknown robot type: {robot_type}")
+            return None
+            
+        # Read the config name from file
+        if os.path.exists(config_file_path):
+            with open(config_file_path, 'r') as f:
+                config_name = f.read().strip()
+                if config_name:
+                    logger.info(f"Found saved {robot_type} configuration: {config_name}")
+                    return config_name
+                    
+        logger.info(f"No saved {robot_type} configuration found")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error reading saved {robot_type} configuration: {e}")
+        return None
+
+
+def get_default_robot_config(robot_type: str, available_configs: list):
+    """Get the default configuration for a robot, checking saved configs first"""
+    saved_config = get_saved_robot_config(robot_type)
+    if saved_config and saved_config in available_configs:
+        return saved_config
+    
+    # Return first available config as fallback
+    if available_configs:
+        return available_configs[0]
+    
+    return None
