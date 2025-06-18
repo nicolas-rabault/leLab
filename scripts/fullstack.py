@@ -137,6 +137,12 @@ def start_backend_detached():
     logger.info("🚀 Starting FastAPI backend server (detached)...")
 
     try:
+        # Get the project root directory (where pyproject.toml is located)
+        project_root = Path(__file__).parent.parent
+        
+        # Preserve the current environment variables
+        env = os.environ.copy()
+        
         backend_process = subprocess.Popen(
             [
                 sys.executable,
@@ -149,12 +155,15 @@ def start_backend_detached():
                 "8000",
                 "--reload",
             ],
+            cwd=project_root,  # Set working directory to project root
+            env=env,  # Preserve environment variables
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             start_new_session=True,  # Detach from parent
         )
 
         logger.info(f"✅ Backend server started (PID: {backend_process.pid})")
+        logger.info(f"📁 Backend working directory: {project_root}")
         return True
     except Exception as e:
         logger.error(f"❌ Failed to start backend server: {e}")
@@ -296,9 +305,10 @@ def main():
             cleanup_processes()
             return
 
-        # Step 5: Open browser
+        # Step 5: Open browser with auto-reset to localhost
         logger.info("🌐 Opening browser...")
-        webbrowser.open("http://localhost:8080")
+        # Open with a URL that will automatically reset to localhost mode
+        webbrowser.open("http://localhost:8080?reset_to_localhost=true")
 
         # Success!
         logger.info("✅ Both servers are running!")
