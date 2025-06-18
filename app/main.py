@@ -10,6 +10,7 @@ from typing import List, Dict, Any
 import threading
 import queue
 from pathlib import Path
+from . import config
 
 # Import our custom recording functionality
 from .recording import (
@@ -583,6 +584,50 @@ def get_robot_port(robot_type: str):
         }
     except Exception as e:
         logger.error(f"Error getting robot port: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/save-robot-config")
+def save_robot_config_endpoint(data: dict):
+    """Save a robot configuration for future use"""
+    try:
+        robot_type = data.get("robot_type")
+        config_name = data.get("config_name")
+        
+        if not robot_type or not config_name:
+            return {"status": "error", "message": "Missing robot_type or config_name"}
+            
+        success = config.save_robot_config(robot_type, config_name)
+        
+        if success:
+            return {"status": "success", "message": f"Configuration saved for {robot_type}"}
+        else:
+            return {"status": "error", "message": "Failed to save configuration"}
+            
+    except Exception as e:
+        logger.error(f"Error saving robot configuration: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/robot-config/{robot_type}")
+def get_robot_config(robot_type: str, available_configs: str = ""):
+    """Get the saved configuration for a robot type"""
+    try:
+        # Parse available configs from query parameter
+        available_configs_list = []
+        if available_configs:
+            available_configs_list = [cfg.strip() for cfg in available_configs.split(",") if cfg.strip()]
+        
+        saved_config = config.get_saved_robot_config(robot_type)
+        default_config = config.get_default_robot_config(robot_type, available_configs_list)
+        
+        return {
+            "status": "success", 
+            "saved_config": saved_config,
+            "default_config": default_config
+        }
+    except Exception as e:
+        logger.error(f"Error getting robot configuration: {e}")
         return {"status": "error", "message": str(e)}
 
 
