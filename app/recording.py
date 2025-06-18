@@ -52,6 +52,8 @@ class RecordingRequest(BaseModel):
     video: bool = True
     push_to_hub: bool = False
     resume: bool = False
+    cameras: dict = {}
+    test_mode: bool = False  # Skip robot connection for testing
 
 
 class UploadRequest(BaseModel):
@@ -68,15 +70,33 @@ class DatasetInfoRequest(BaseModel):
 
 def create_record_config(request: RecordingRequest) -> RecordConfig:
     """Create a RecordConfig from the recording request"""
+    from lerobot.common.cameras.opencv.configuration_opencv import OpenCVCameraConfig
+    
     # Setup calibration files
     leader_config_name, follower_config_name = setup_calibration_files(
         request.leader_config, request.follower_config
     )
 
+    # 🔧 CAMERA CONFIG CONVERSION: Convert frontend camera dict to proper CameraConfig objects
+    camera_configs = {}
+    for camera_name, camera_data in request.cameras.items():
+        if camera_data.get("type") == "opencv":
+            # Convert frontend format to OpenCVCameraConfig
+            camera_configs[camera_name] = OpenCVCameraConfig(
+                index_or_path=camera_data.get("camera_index", 0),
+                fps=camera_data.get("fps"),
+                width=camera_data.get("width"),
+                height=camera_data.get("height"),
+            )
+            logger.info(f"✅ CAMERA CONFIG: Converted {camera_name} -> OpenCVCameraConfig(index={camera_data.get('camera_index')}, {camera_data.get('width')}x{camera_data.get('height')}@{camera_data.get('fps')}fps)")
+        else:
+            logger.warning(f"⚠️ CAMERA CONFIG: Unsupported camera type '{camera_data.get('type')}' for {camera_name}")
+
     # Create robot config
     robot_config = SO101FollowerConfig(
         port=request.follower_port,
         id=follower_config_name,
+        cameras=camera_configs,
     )
 
     # Create teleop config
@@ -112,10 +132,22 @@ def create_record_config(request: RecordingRequest) -> RecordConfig:
 
 def handle_start_recording(request: RecordingRequest, websocket_manager=None) -> Dict[str, Any]:
     """Handle start recording request by using the existing record() function"""
-    global recording_active, recording_thread, recording_events, recording_config, recording_start_time, current_episode
+    global recording_active, recording_thread, recording_events, recording_config, recording_start_time, current_episode, saved_episodes, current_phase, phase_start_time
 
     if recording_active:
         return {"success": False, "message": "Recording is already active"}
+
+    # 🧹 CLEANUP: Reset all global state from previous sessions
+    logger.info("🧹 CLEANUP: Resetting all recording state variables")
+    recording_active = False
+    recording_thread = None
+    recording_events = None
+    recording_config = None
+    recording_start_time = None
+    current_episode = 1
+    saved_episodes = 0
+    current_phase = "preparing"
+    phase_start_time = None
 
     try:
         import time
@@ -154,21 +186,38 @@ def handle_start_recording(request: RecordingRequest, websocket_manager=None) ->
                 print(f"🚀 STATUS CHANGE: Recording session started for dataset '{request.dataset_repo_id}'")
                 print(f"📋 STATUS CHANGE: Task: '{request.single_task}' - {request.num_episodes} episodes planned")
                 
+                # 🔓 CRITICAL: Wait for camera streams to be fully released by frontend
+                if request.cameras:
+                    logger.info(f"🔓 BACKEND: Waiting for camera resources to be released (cameras configured: {list(request.cameras.keys())})")
+                    print(f"🔓 STATUS CHANGE: Waiting for camera resources to be released...")
+                    time.sleep(2.0)  # Give cameras more time to be fully released
+                    logger.info(f"✅ BACKEND: Camera wait period complete, proceeding with robot initialization")
+                
                 # Use the original record() function but with web-controlled events
                 dataset = record_with_web_events(record_config, recording_events)
                 logger.info(f"Recording completed successfully. Dataset has {dataset.num_episodes} episodes")
                 print(f"🎉 STATUS CHANGE: Recording session completed successfully with {dataset.num_episodes} episodes")
                 return {"success": True, "episodes": dataset.num_episodes}
             except Exception as e:
-                logger.error(f"Error during recording: {e}")
+                logger.error(f"❌ CRITICAL ERROR during recording: {e}")
                 print(f"❌ STATUS CHANGE: Recording session failed with error: {str(e)}")
                 import traceback
                 logger.error(f"Full traceback: {traceback.format_exc()}")
-                return {"success": False, "error": str(e)}
-            finally:
+                
+                # 🚨 CRITICAL: Set phase to "error" instead of "completed" to distinguish failures
+                current_phase = "error"
                 recording_active = False
                 recording_start_time = None
-                current_phase = "completed"
+                phase_start_time = None
+                
+                return {"success": False, "error": str(e)}
+            finally:
+                # Only set to completed if no error occurred
+                if current_phase != "error":
+                    current_phase = "completed"
+                    
+                recording_active = False
+                recording_start_time = None
                 phase_start_time = None
                 current_episode = 1  # Reset for next session
                 saved_episodes = 0  # Reset for next session
@@ -293,13 +342,17 @@ def handle_recording_status() -> Dict[str, Any]:
     """Handle recording status request"""
     import time
     
-    # If recording is not active and phase is completed, indicate session has ended
-    session_ended = not recording_active and current_phase == "completed"
+    # If recording is not active and phase is completed or error, indicate session has ended
+    session_ended = not recording_active and current_phase in ["completed", "error"]
     
     # Log when session has ended to help debug frontend polling
     if session_ended:
-        logger.info("📡 RECORDING STATUS REQUEST: Session has ended - frontend should stop polling")
-        print("📡 STATUS CHANGE: Frontend is still polling after session end - should stop now")
+        if current_phase == "error":
+            logger.info("📡 RECORDING STATUS REQUEST: Session failed with error - frontend should stop polling")
+            print("📡 STATUS CHANGE: Frontend is still polling after session error - should stop now")
+        else:
+            logger.info("📡 RECORDING STATUS REQUEST: Session has ended - frontend should stop polling")
+            print("📡 STATUS CHANGE: Frontend is still polling after session end - should stop now")
     
     status = {
         "recording_active": recording_active,
@@ -310,7 +363,7 @@ def handle_recording_status() -> Dict[str, Any]:
             "exit_early": recording_active,          # Right arrow key replacement
             "rerecord_episode": recording_active and current_phase == "recording"  # Only during recording phase
         },
-        "message": "Recording session has ended - stop polling" if session_ended else "Recording status retrieved successfully"
+        "message": "Recording session failed with error - check logs" if current_phase == "error" else ("Recording session has ended - stop polling" if session_ended else "Recording status retrieved successfully")
     }
     
     # Add episode information if recording is active
@@ -494,9 +547,27 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
     # Load pretrained policy
     policy = None if cfg.policy is None else make_policy(cfg.policy, ds_meta=dataset.meta)
 
-    robot.connect()
+    # 🔧 ROBOT CONNECTION: Connect with enhanced error handling for camera conflicts
+    try:
+        logger.info("🔧 ROBOT CONNECTION: Attempting to connect robot...")
+        robot.connect()
+        logger.info("✅ ROBOT CONNECTION: Robot connected successfully")
+    except Exception as e:
+        logger.error(f"❌ ROBOT CONNECTION: Failed to connect robot: {e}")
+        # If robot connection fails due to camera conflict, provide clear error
+        if "camera" in str(e).lower() or "device" in str(e).lower() or "busy" in str(e).lower():
+            logger.error("💡 ROBOT CONNECTION: Camera connection failure - likely camera resource conflict")
+            logger.error("💡 ROBOT CONNECTION: Make sure frontend camera streams are released before recording")
+        raise
+    
     if teleop is not None:
-        teleop.connect()
+        try:
+            logger.info("🔧 TELEOP CONNECTION: Attempting to connect teleoperator...")
+            teleop.connect()
+            logger.info("✅ TELEOP CONNECTION: Teleoperator connected successfully")
+        except Exception as e:
+            logger.error(f"❌ TELEOP CONNECTION: Failed to connect teleoperator: {e}")
+            raise
     
     # Ensure calibration is properly loaded and applied to the devices
     logger.info(f"Applying calibration to devices")

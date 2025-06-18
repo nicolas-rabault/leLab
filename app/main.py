@@ -530,6 +530,40 @@ def get_available_ports():
         return {"status": "error", "message": str(e)}
 
 
+@app.get("/available-cameras")
+def get_available_cameras():
+    """Get all available cameras"""
+    try:
+        # Try to detect cameras using OpenCV
+        import cv2
+        cameras = []
+        
+        # Test up to 10 camera indices
+        for i in range(10):
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                if ret:
+                    cameras.append({
+                        "index": i,
+                        "name": f"Camera {i}",
+                        "available": True,
+                        "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                        "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+                        "fps": int(cap.get(cv2.CAP_PROP_FPS)),
+                    })
+                cap.release()
+            
+        return {"status": "success", "cameras": cameras}
+    except ImportError:
+        # OpenCV not available, return empty list
+        logger.warning("OpenCV not available for camera detection")
+        return {"status": "success", "cameras": []}
+    except Exception as e:
+        logger.error(f"Error detecting cameras: {e}")
+        return {"status": "error", "message": str(e), "cameras": []}
+
+
 @app.post("/start-port-detection")
 def start_port_detection(data: dict):
     """Start port detection process for a robot"""
