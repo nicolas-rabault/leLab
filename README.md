@@ -104,7 +104,7 @@ lelab-frontend
 
 **Frontend Repository:**
 
-The frontend is automatically cloned from [lelab-frontend-dev](https://github.com/amtellezfernandez/lelab-frontend-dev.git) when you run `lelab-frontend` or `lelab-fullstack`. The system will:
+The frontend is automatically cloned from [leLab-space](https://github.com/jurmy24/leLab-space.git) when you run `lelab-frontend` or `lelab-fullstack`. The system will:
 
 1. Check if the frontend already exists in the parent directory
 2. Clone the repository if it doesn't exist
@@ -137,7 +137,7 @@ leLab/
 │   │   ├── frontend.py      # Frontend-only startup
 │   │   └── fullstack.py     # Full-stack startup
 │   └── static/              # Static web files
-├── ../lelab-frontend-dev/   # React frontend (auto-cloned)
+├── ../leLab-space/   # React frontend (auto-cloned)
 │   ├── src/
 │   │   ├── components/      # React components
 │   │   ├── pages/           # Page components

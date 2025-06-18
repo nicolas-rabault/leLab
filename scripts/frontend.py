@@ -14,8 +14,8 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-FRONTEND_REPO_URL = "https://github.com/amtellezfernandez/lelab-frontend-dev.git"
-FRONTEND_DIR_NAME = "lelab-frontend-dev"
+FRONTEND_REPO_URL = "https://github.com/jurmy24/leLab-space.git"
+FRONTEND_DIR_NAME = "leLab-space"
 
 
 def get_frontend_path():
