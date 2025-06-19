@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+import socketio
 import os
 import logging
 import glob
@@ -9,8 +10,10 @@ import asyncio
 from typing import List, Dict, Any
 import threading
 import queue
+import time
 from pathlib import Path
 from . import config
+from .webrtc_signaling import get_socketio_app
 
 # Import our custom recording functionality
 from .recording import (
@@ -75,6 +78,12 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+# Get Socket.IO app for WebRTC signaling
+sio = get_socketio_app()
+
+# Create Socket.IO ASGI app
+socket_app = socketio.ASGIApp(sio, app)
 
 # Create static directory if it doesn't exist
 os.makedirs("app/static", exist_ok=True)
@@ -665,6 +674,143 @@ def get_robot_config(robot_type: str, available_configs: str = ""):
         return {"status": "error", "message": str(e)}
 
 
+# ============================================================================
+# WEBRTC STREAM MANAGEMENT ENDPOINTS
+# ============================================================================
+
+@app.get("/webrtc/streams")
+def get_active_streams():
+    """Get list of all active WebRTC streams"""
+    try:
+        from .webrtc_signaling import active_streams, stream_buffers
+        
+        streams = []
+        for stream_id, stream_data in active_streams.items():
+            stream_copy = stream_data.copy()
+            stream_copy['buffer_size'] = len(stream_buffers.get(stream_id, []))
+            streams.append(stream_copy)
+        
+        return {"success": True, "streams": streams}
+    except Exception as e:
+        logger.error(f"Error getting active streams: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/webrtc/streams/{stream_id}")
+def get_stream_info(stream_id: str):
+    """Get detailed information about a specific stream"""
+    try:
+        from .webrtc_signaling import active_streams, stream_buffers
+        
+        if stream_id not in active_streams:
+            return {"success": False, "error": "Stream not found"}
+        
+        stream_info = active_streams[stream_id].copy()
+        stream_info['buffer_size'] = len(stream_buffers.get(stream_id, []))
+        
+        # Add buffer statistics
+        if stream_id in stream_buffers and stream_buffers[stream_id]:
+            buffer = stream_buffers[stream_id]
+            stream_info['buffer_stats'] = {
+                'oldest_frame': buffer[0]['timestamp'] if buffer else None,
+                'newest_frame': buffer[-1]['timestamp'] if buffer else None,
+                'total_frames': len(buffer)
+            }
+        
+        return {"success": True, "stream": stream_info}
+    except Exception as e:
+        logger.error(f"Error getting stream info for {stream_id}: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/webrtc/sessions")
+def get_active_sessions():
+    """Get list of all active WebRTC sessions"""
+    try:
+        from .webrtc_signaling import active_sessions
+        
+        sessions = []
+        for webrtc_id, session_data in active_sessions.items():
+            session_copy = session_data.copy()
+            # Remove sensitive client IDs from public endpoint
+            session_copy.pop('desktop_client', None)
+            session_copy.pop('phone_client', None)
+            sessions.append(session_copy)
+        
+        return {"success": True, "sessions": sessions}
+    except Exception as e:
+        logger.error(f"Error getting active sessions: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/webrtc/test-stream")
+def create_test_stream():
+    """Create a test stream for development/testing purposes"""
+    try:
+        import uuid
+        from datetime import datetime
+        from .webrtc_signaling import active_streams, stream_buffers
+        
+        # Generate test stream
+        stream_id = str(uuid.uuid4())
+        test_webrtc_id = f"test_{int(time.time())}"
+        
+        # Create test stream entry
+        active_streams[stream_id] = {
+            'stream_id': stream_id,
+            'webrtc_id': test_webrtc_id,
+            'created_at': datetime.now().isoformat(),
+            'status': 'test_active',
+            'metadata': {
+                'width': 640,
+                'height': 480,
+                'fps': 30,
+                'codec': 'h264',
+                'test': True
+            }
+        }
+        
+        # Initialize with test frame data
+        stream_buffers[stream_id] = [
+            {
+                'timestamp': time.time(),
+                'data': 'test_frame_data_placeholder',
+                'sequence': 0
+            }
+        ]
+        
+        logger.info(f"Created test stream: {stream_id}")
+        
+        return {
+            "success": True, 
+            "stream_id": stream_id,
+            "webrtc_id": test_webrtc_id,
+            "message": "Test stream created successfully"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating test stream: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.delete("/webrtc/streams/{stream_id}")
+def delete_stream(stream_id: str):
+    """Delete a specific stream and its buffer"""
+    try:
+        from .webrtc_signaling import active_streams, stream_buffers
+        
+        if stream_id not in active_streams:
+            return {"success": False, "error": "Stream not found"}
+        
+        # Remove stream and buffer
+        del active_streams[stream_id]
+        if stream_id in stream_buffers:
+            del stream_buffers[stream_id]
+        
+        logger.info(f"Deleted stream: {stream_id}")
+        return {"success": True, "message": "Stream deleted successfully"}
+        
+    except Exception as e:
+        logger.error(f"Error deleting stream {stream_id}: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up resources when FastAPI shuts down"""
@@ -680,3 +826,7 @@ async def shutdown_event():
     if manager:
         manager.stop_broadcast_thread()
     logger.info("✅ Cleanup completed")
+
+# Create a combined app that serves both FastAPI and Socket.IO
+# The socket_app already wraps the FastAPI app, so we use it as the main app
+main_app = socket_app
