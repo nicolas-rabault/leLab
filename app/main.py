@@ -6,6 +6,7 @@ import os
 import logging
 import glob
 import asyncio
+import traceback
 from typing import List, Dict, Any
 import threading
 import queue
@@ -543,33 +544,37 @@ def get_available_ports():
 
 @app.get("/available-cameras")
 def get_available_cameras():
-    """Get all available cameras"""
+    """Get all available cameras using advanced detection"""
     try:
-        # Try to detect cameras using OpenCV
-        import cv2
-        cameras = []
+        # Use the advanced camera detection with preview images and better error handling
+        cameras = find_all_cameras()
         
-        # Test up to 10 camera indices
-        for i in range(10):
-            cap = cv2.VideoCapture(i)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                if ret:
-                    cameras.append({
-                        "index": i,
-                        "name": f"Camera {i}",
-                        "available": True,
-                        "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                        "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                        "fps": int(cap.get(cv2.CAP_PROP_FPS)),
-                    })
-                cap.release()
+        # Transform to maintain backward compatibility with the original format
+        compatible_cameras = []
+        for cam in cameras:
+            compatible_cam = {
+                "index": cam.get("id"),
+                "name": cam.get("name", f"Camera {cam.get('id')}"),
+                "available": True,
+                "type": cam.get("type", "OpenCV").lower(),
+                "backend_api": cam.get("backend_api", "UNKNOWN"),
+            }
             
-        return {"status": "success", "cameras": cameras}
-    except ImportError:
-        # OpenCV not available, return empty list
-        logger.warning("OpenCV not available for camera detection")
-        return {"status": "success", "cameras": []}
+            # Add stream profile information
+            profile = cam.get("default_stream_profile", {})
+            compatible_cam.update({
+                "width": profile.get("width", 640),
+                "height": profile.get("height", 480),
+                "fps": profile.get("fps", 30),
+            })
+            
+            # Add preview image if available
+            if "preview_image" in cam:
+                compatible_cam["preview_image"] = cam["preview_image"]
+                
+            compatible_cameras.append(compatible_cam)
+        
+        return {"status": "success", "cameras": compatible_cameras}
     except Exception as e:
         logger.error(f"Error detecting cameras: {e}")
         return {"status": "error", "message": str(e), "cameras": []}
