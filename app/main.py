@@ -6,6 +6,7 @@ import os
 import logging
 import glob
 import asyncio
+import traceback
 from typing import List, Dict, Any
 import threading
 import queue
@@ -54,6 +55,17 @@ from .replaying import (
     handle_stop_replay,
     handle_replay_status,
     handle_replay_logs,
+)
+
+# Import camera detection functionality
+from .camera_detection import (
+    find_all_cameras,
+    find_opencv_cameras,
+    find_realsense_cameras,
+    test_camera_configuration,
+    create_camera_config_for_lerobot,
+    get_camera_summary,
+    capture_image_from_camera
 )
 
 
@@ -532,33 +544,37 @@ def get_available_ports():
 
 @app.get("/available-cameras")
 def get_available_cameras():
-    """Get all available cameras"""
+    """Get all available cameras using advanced detection"""
     try:
-        # Try to detect cameras using OpenCV
-        import cv2
-        cameras = []
+        # Use the advanced camera detection with preview images and better error handling
+        cameras = find_all_cameras()
         
-        # Test up to 10 camera indices
-        for i in range(10):
-            cap = cv2.VideoCapture(i)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                if ret:
-                    cameras.append({
-                        "index": i,
-                        "name": f"Camera {i}",
-                        "available": True,
-                        "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
-                        "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
-                        "fps": int(cap.get(cv2.CAP_PROP_FPS)),
-                    })
-                cap.release()
+        # Transform to maintain backward compatibility with the original format
+        compatible_cameras = []
+        for cam in cameras:
+            compatible_cam = {
+                "index": cam.get("id"),
+                "name": cam.get("name", f"Camera {cam.get('id')}"),
+                "available": True,
+                "type": cam.get("type", "OpenCV").lower(),
+                "backend_api": cam.get("backend_api", "UNKNOWN"),
+            }
             
-        return {"status": "success", "cameras": cameras}
-    except ImportError:
-        # OpenCV not available, return empty list
-        logger.warning("OpenCV not available for camera detection")
-        return {"status": "success", "cameras": []}
+            # Add stream profile information
+            profile = cam.get("default_stream_profile", {})
+            compatible_cam.update({
+                "width": profile.get("width", 640),
+                "height": profile.get("height", 480),
+                "fps": profile.get("fps", 30),
+            })
+            
+            # Add preview image if available
+            if "preview_image" in cam:
+                compatible_cam["preview_image"] = cam["preview_image"]
+                
+            compatible_cameras.append(compatible_cam)
+        
+        return {"status": "success", "cameras": compatible_cameras}
     except Exception as e:
         logger.error(f"Error detecting cameras: {e}")
         return {"status": "error", "message": str(e), "cameras": []}
@@ -662,6 +678,276 @@ def get_robot_config(robot_type: str, available_configs: str = ""):
         }
     except Exception as e:
         logger.error(f"Error getting robot configuration: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+# Camera detection endpoints
+@app.get("/cameras/detect")
+def detect_cameras(camera_type: str = None):
+    """Detect available cameras, optionally filtered by type (opencv/realsense)"""
+    try:
+        logger.info(f"Detecting cameras, filter: {camera_type}")
+        cameras = find_all_cameras(camera_type_filter=camera_type)
+        
+        return {
+            "status": "success",
+            "cameras": cameras,
+            "total_found": len(cameras),
+            "message": f"Found {len(cameras)} cameras"
+        }
+    except Exception as e:
+        logger.error(f"Error detecting cameras: {e}")
+        return {"status": "error", "message": str(e), "cameras": []}
+
+
+@app.get("/cameras/summary")
+def get_cameras_summary():
+    """Get a summary of all available cameras"""
+    try:
+        summary = get_camera_summary()
+        return {"status": "success", **summary}
+    except Exception as e:
+        logger.error(f"Error getting camera summary: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/cameras/test")
+def test_camera(camera_info: dict):
+    """Test a specific camera configuration"""
+    try:
+        result = test_camera_configuration(camera_info)
+        return {"status": "success" if result["success"] else "error", **result}
+    except Exception as e:
+        logger.error(f"Error testing camera: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/cameras/capture")
+def capture_camera_image(data: dict):
+    """Capture an image from a specific camera"""
+    try:
+        # Extract camera_info from the request data
+        camera_info = data.get("camera_info", {})
+        logger.info(f"Capture endpoint called with camera_info: {camera_info}")
+        
+        if not camera_info:
+            return {"status": "error", "message": "camera_info is required"}
+        
+        result = capture_image_from_camera(camera_info)
+        logger.info(f"Capture result: success={result.get('success')}, error={result.get('error', 'None')}")
+        
+        if result.get("success"):
+            logger.info(f"Successfully captured image from camera {camera_info.get('id')}")
+        else:
+            logger.warning(f"Failed to capture from camera {camera_info.get('id')}: {result.get('error')}")
+            
+        return {"status": "success" if result["success"] else "error", **result}
+    except Exception as e:
+        logger.error(f"Error capturing image: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/cameras/create-config")
+def create_camera_config(data: dict):
+    """Create a camera configuration for LeRobot"""
+    try:
+        camera_info = data.get("camera_info")
+        custom_settings = data.get("custom_settings", {})
+        
+        if not camera_info:
+            return {"status": "error", "message": "camera_info is required"}
+            
+        config = create_camera_config_for_lerobot(camera_info, custom_settings)
+        
+        return {
+            "status": "success",
+            "camera_config": config,
+            "message": "Camera configuration created successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error creating camera config: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/cameras/config")  
+def get_camera_config():
+    """Get the saved camera configuration"""
+    try:
+        camera_config = config.get_default_camera_config()
+        return {
+            "status": "success",
+            "camera_config": camera_config,
+            "message": "Camera configuration retrieved successfully"
+        }
+    except Exception as e:
+        logger.error(f"Error getting camera config: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/cameras/config/save")
+def save_camera_config_endpoint(data: dict):
+    """Save camera configuration"""
+    try:
+        camera_config = data.get("camera_config")
+        
+        if not camera_config:
+            return {"status": "error", "message": "camera_config is required"}
+            
+        success = config.save_camera_config(camera_config)
+        
+        if success:
+            return {
+                "status": "success", 
+                "message": "Camera configuration saved successfully"
+            }
+        else:
+            return {"status": "error", "message": "Failed to save camera configuration"}
+            
+    except Exception as e:
+        logger.error(f"Error saving camera config: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/cameras/config/update")
+def update_camera_config_endpoint(data: dict):
+    """Update a specific camera in the configuration"""
+    try:
+        camera_name = data.get("camera_name")
+        camera_config = data.get("camera_config")
+        
+        if not camera_name or not camera_config:
+            return {"status": "error", "message": "camera_name and camera_config are required"}
+            
+        success = config.update_camera_in_config(camera_name, camera_config)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Camera {camera_name} updated successfully"
+            }
+        else:
+            return {"status": "error", "message": f"Failed to update camera {camera_name}"}
+            
+    except Exception as e:
+        logger.error(f"Error updating camera config: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.delete("/cameras/config/{camera_name}")
+def remove_camera_config_endpoint(camera_name: str):
+    """Remove a specific camera from the configuration"""
+    try:
+        success = config.remove_camera_from_config(camera_name)
+        
+        if success:
+            return {
+                "status": "success",
+                "message": f"Camera {camera_name} removed successfully"
+            }
+        else:
+            return {"status": "error", "message": f"Failed to remove camera {camera_name}"}
+            
+    except Exception as e:
+        logger.error(f"Error removing camera config: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/cameras/stream/{camera_name}")
+def stream_camera(camera_name: str):
+    """Stream a specific camera feed"""
+    try:
+        from fastapi.responses import StreamingResponse
+        import cv2
+        import time
+        from . import config
+        
+        logger.info(f"Starting camera stream for: {camera_name}")
+        
+        # Get camera configuration
+        camera_config = config.get_saved_camera_config()
+        if not camera_config or "cameras" not in camera_config:
+            logger.error("No camera configuration found")
+            return {"status": "error", "message": "No camera configuration found"}
+            
+        if camera_name not in camera_config["cameras"]:
+            logger.error(f"Camera '{camera_name}' not found in configuration")
+            available_cameras = list(camera_config["cameras"].keys())
+            logger.info(f"Available cameras: {available_cameras}")
+            return {"status": "error", "message": f"Camera '{camera_name}' not found in configuration"}
+            
+        camera_info = camera_config["cameras"][camera_name]
+        logger.info(f"Camera config: {camera_info}")
+        
+        def generate_frames():
+            cap = None
+            try:
+                # Initialize camera based on type
+                if camera_info.get("type") == "opencv":
+                    camera_index = camera_info.get("index_or_path", 0)
+                    logger.info(f"Opening camera at index: {camera_index}")
+                    
+                    cap = cv2.VideoCapture(camera_index)
+                    
+                    if not cap.isOpened():
+                        logger.error(f"Failed to open camera at index {camera_index}")
+                        return
+                    
+                    logger.info(f"Camera opened successfully at index {camera_index}")
+                    
+                    # Set camera properties from config
+                    width = camera_info.get("width", 640)
+                    height = camera_info.get("height", 480)
+                    fps = camera_info.get("fps", 30)
+                    
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+                    cap.set(cv2.CAP_PROP_FPS, fps)
+                    
+                    logger.info(f"Camera settings: {width}x{height} @ {fps}fps")
+                    
+                    frame_count = 0
+                    while True:
+                        ret, frame = cap.read()
+                        if not ret:
+                            logger.warning("Failed to read frame from camera")
+                            break
+                        
+                        if frame_count % 30 == 0:  # Log every 30 frames
+                            logger.info(f"Streaming frame {frame_count} for {camera_name}")
+                        
+                        # Encode frame as JPEG
+                        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                        frame_bytes = buffer.tobytes()
+                        
+                        # Yield frame in multipart format
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                        
+                        frame_count += 1
+                        
+                        # Small delay to control frame rate
+                        time.sleep(1.0 / fps)
+                else:
+                    logger.error(f"Unsupported camera type: {camera_info.get('type')}")
+                    return
+                            
+            except Exception as e:
+                logger.error(f"Error in camera stream for {camera_name}: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+            finally:
+                if cap:
+                    cap.release()
+                    logger.info(f"Released camera {camera_name}")
+        
+        return StreamingResponse(
+            generate_frames(),
+            media_type="multipart/x-mixed-replace; boundary=frame"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error setting up camera stream for {camera_name}: {e}")
         return {"status": "error", "message": str(e)}
 
 
