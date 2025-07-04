@@ -64,3 +64,19 @@ package-lock.json
 *.db
 *.sqlite
 *.sqlite3
+
+# Generated certificates and SSL files
+certs/
+*.pem
+*.key
+*.crt
+*.cert
+
+# Test files and temporary scripts
+test_*.py
+test_*.html
+test-*.html
+
+# Generated documentation
+HTTPS_SETUP.md
+PHONE_CAMERA_SETUP.md

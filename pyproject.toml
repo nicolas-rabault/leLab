@@ -12,6 +12,7 @@ dependencies = [
     "fastapi[standard]>=0.115.12",
     "websockets>=15.0.1",
     "uvicorn>=0.24.0",
+    "python-socketio>=5.11.0",
     "lerobot @ git+https://github.com/huggingface/lerobot.git",
 ]
 
