@@ -27,6 +27,64 @@ CONFIG_STORAGE_PATH = os.path.expanduser("~/.cache/huggingface/lerobot/saved_con
 LEADER_CONFIG_FILE = os.path.join(CONFIG_STORAGE_PATH, "leader_config.txt")
 FOLLOWER_CONFIG_FILE = os.path.join(CONFIG_STORAGE_PATH, "follower_config.txt")
 
+# Define camera configuration storage path
+CAMERA_CONFIG_PATH = os.path.expanduser("~/.cache/huggingface/lerobot/camera_configs")
+CAMERA_CONFIG_FILE = os.path.join(CAMERA_CONFIG_PATH, "camera_config.json")
+
+# Define external URL configuration storage path
+EXTERNAL_URL_FILE = os.path.join(CONFIG_STORAGE_PATH, "external_url.txt")
+
+# Global variable to store current external URL
+_external_url = None
+
+def set_external_url(url: str):
+    """Set the external URL for QR code generation (ngrok, etc.)"""
+    global _external_url
+    _external_url = url.rstrip('/') if url else None
+    
+    # Ensure directory exists
+    os.makedirs(CONFIG_STORAGE_PATH, exist_ok=True)
+    
+    # Save to file for persistence
+    try:
+        with open(EXTERNAL_URL_FILE, 'w') as f:
+            f.write(url if url else '')
+        logger.info(f"External URL saved: {url}")
+    except Exception as e:
+        logger.error(f"Failed to save external URL: {e}")
+
+def get_external_url() -> str:
+    """Get the current external URL for QR code generation"""
+    global _external_url
+    
+    # Return cached value if available
+    if _external_url is not None:
+        return _external_url
+    
+    # Try to load from file
+    try:
+        if os.path.exists(EXTERNAL_URL_FILE):
+            with open(EXTERNAL_URL_FILE, 'r') as f:
+                url = f.read().strip()
+                _external_url = url if url else None
+                return _external_url
+    except Exception as e:
+        logger.error(f"Failed to load external URL: {e}")
+    
+    return None
+
+def clear_external_url():
+    """Clear the external URL configuration"""
+    global _external_url
+    _external_url = None
+    
+    try:
+        if os.path.exists(EXTERNAL_URL_FILE):
+            os.remove(EXTERNAL_URL_FILE)
+        logger.info("External URL configuration cleared")
+    except Exception as e:
+        logger.error(f"Failed to clear external URL: {e}")
+
 def setup_calibration_files(leader_config: str, follower_config: str):
     """Setup calibration files in the correct locations for teleoperation and recording"""
     # Extract config names from file paths (remove .json extension)
@@ -314,3 +372,91 @@ def get_default_robot_config(robot_type: str, available_configs: list):
         return available_configs[0]
     
     return None
+
+
+def save_camera_config(camera_config: dict):
+    """Save camera configuration to file"""
+    try:
+        import json
+        
+        # Create the camera config directory if it doesn't exist
+        os.makedirs(CAMERA_CONFIG_PATH, exist_ok=True)
+        
+        # Save the camera configuration as JSON
+        with open(CAMERA_CONFIG_FILE, 'w') as f:
+            json.dump(camera_config, f, indent=2)
+            
+        logger.info(f"Saved camera configuration with {len(camera_config.get('cameras', {}))} cameras")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error saving camera configuration: {e}")
+        return False
+
+
+def get_saved_camera_config():
+    """Get the saved camera configuration from file"""
+    try:
+        import json
+        
+        if os.path.exists(CAMERA_CONFIG_FILE):
+            with open(CAMERA_CONFIG_FILE, 'r') as f:
+                camera_config = json.load(f)
+                if camera_config:
+                    logger.info(f"Found saved camera configuration with {len(camera_config.get('cameras', {}))} cameras")
+                    return camera_config
+                    
+        logger.info("No saved camera configuration found")
+        return None
+        
+    except Exception as e:
+        logger.error(f"Error reading saved camera configuration: {e}")
+        return None
+
+
+def get_default_camera_config():
+    """Get the default camera configuration, checking saved configs first"""
+    saved_config = get_saved_camera_config()
+    if saved_config:
+        return saved_config
+    
+    # Return empty config as fallback
+    return {"cameras": {}}
+
+
+def update_camera_in_config(camera_name: str, camera_config: dict):
+    """Update a specific camera in the saved configuration"""
+    try:
+        # Get current config or create new one
+        full_config = get_saved_camera_config() or {"cameras": {}}
+        
+        # Update the specific camera
+        full_config["cameras"][camera_name] = camera_config
+        
+        # Save updated config
+        return save_camera_config(full_config)
+        
+    except Exception as e:
+        logger.error(f"Error updating camera {camera_name} in config: {e}")
+        return False
+
+
+def remove_camera_from_config(camera_name: str):
+    """Remove a specific camera from the saved configuration"""
+    try:
+        # Get current config
+        full_config = get_saved_camera_config()
+        if not full_config or "cameras" not in full_config:
+            return True  # Nothing to remove
+        
+        # Remove the camera if it exists
+        if camera_name in full_config["cameras"]:
+            del full_config["cameras"][camera_name]
+            logger.info(f"Removed camera {camera_name} from configuration")
+        
+        # Save updated config
+        return save_camera_config(full_config)
+        
+    except Exception as e:
+        logger.error(f"Error removing camera {camera_name} from config: {e}")
+        return False
