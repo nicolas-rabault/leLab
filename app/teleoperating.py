@@ -1,27 +1,13 @@
 import logging
-import os
-import shutil
-import select
-import sys
-import termios
-import tty
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 from pydantic import BaseModel
 
-from lerobot.common.teleoperators.so101_leader import SO101LeaderConfig, SO101Leader
-from lerobot.common.robots.so101_follower import SO101FollowerConfig, SO101Follower
-from lerobot.teleoperate import teleoperate, TeleoperateConfig
+from lerobot.teleoperators.so_leader import SO101LeaderConfig, SO101Leader
+from lerobot.robots.so_follower import SO101FollowerConfig, SO101Follower
 
-# Import calibration paths and functions from config (shared constants)
-from .config import (
-    CALIBRATION_BASE_PATH_TELEOP,
-    CALIBRATION_BASE_PATH_ROBOTS,
-    LEADER_CONFIG_PATH,
-    FOLLOWER_CONFIG_PATH,
-    setup_calibration_files
-)
+from .config import setup_calibration_files
 
 logger = logging.getLogger(__name__)
 
@@ -37,26 +23,6 @@ class TeleoperateRequest(BaseModel):
     follower_port: str
     leader_config: str
     follower_config: str
-
-
-def setup_keyboard():
-    """Set up keyboard for non-blocking input"""
-    old_settings = termios.tcgetattr(sys.stdin)
-    tty.setraw(sys.stdin.fileno())
-    return old_settings
-
-
-def restore_keyboard(old_settings):
-    """Restore keyboard settings"""
-    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-
-def check_quit_key():
-    """Check if 'q' key was pressed"""
-    if select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], []):
-        key = sys.stdin.read(1)
-        return key.lower() == "q"
-    return False
 
 
 def get_joint_positions_from_robot(robot) -> Dict[str, float]:
@@ -170,26 +136,15 @@ def handle_start_teleoperation(request: TeleoperateRequest, websocket_manager=No
                 logger.info("Successfully connected to both devices")
 
                 logger.info("Starting teleoperation loop...")
-                logger.info("Press 'q' to quit teleoperation")
-
-                # Set up keyboard for non-blocking input
-                old_settings = setup_keyboard()
 
                 try:
-                    want_to_disconnect = False
                     last_broadcast_time = 0
-                    broadcast_interval = 0.05  # Broadcast every 50ms (20 FPS)
+                    broadcast_interval = 0.05  # 20 FPS
 
-                    while not want_to_disconnect and teleoperation_active:
-                        # Check teleoperation_active flag first (for web stop requests)
-                        if not teleoperation_active:
-                            logger.info("Teleoperation stopped via web interface")
-                            break
-                            
+                    while teleoperation_active:
                         action = teleop_device.get_action()
                         robot.send_action(action)
 
-                        # Broadcast joint positions to connected WebSocket clients
                         current_time = time.time()
                         if current_time - last_broadcast_time >= broadcast_interval:
                             try:
@@ -199,25 +154,14 @@ def handle_start_teleoperation(request: TeleoperateRequest, websocket_manager=No
                                     "joints": joint_positions,
                                     "timestamp": current_time,
                                 }
-
-                                # Use websocket manager to broadcast the data
                                 if websocket_manager and websocket_manager.active_connections:
                                     websocket_manager.broadcast_joint_data_sync(joint_data)
-
                                 last_broadcast_time = current_time
                             except Exception as e:
                                 logger.error(f"Error broadcasting joint data: {e}")
 
-                        # Check for keyboard input
-                        if check_quit_key():
-                            want_to_disconnect = True
-                            logger.info("Quit key pressed, stopping teleoperation...")
-                            
-                        # Small delay to prevent excessive CPU usage and allow for responsive stopping
-                        time.sleep(0.001)  # 1ms delay
+                        time.sleep(0.001)
                 finally:
-                    # Always restore keyboard settings
-                    restore_keyboard(old_settings)
                     robot.disconnect()
                     teleop_device.disconnect()
                     logger.info("Teleoperation stopped")

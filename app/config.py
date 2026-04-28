@@ -14,8 +14,8 @@ CALIBRATION_BASE_PATH_TELEOP = os.path.expanduser(
 CALIBRATION_BASE_PATH_ROBOTS = os.path.expanduser(
     "~/.cache/huggingface/lerobot/calibration/robots"
 )
-LEADER_CONFIG_PATH = os.path.join(CALIBRATION_BASE_PATH_TELEOP, "so101_leader")
-FOLLOWER_CONFIG_PATH = os.path.join(CALIBRATION_BASE_PATH_ROBOTS, "so101_follower") 
+LEADER_CONFIG_PATH = os.path.join(CALIBRATION_BASE_PATH_TELEOP, "so_leader")
+FOLLOWER_CONFIG_PATH = os.path.join(CALIBRATION_BASE_PATH_ROBOTS, "so_follower")
 
 # Define port storage path
 PORT_CONFIG_PATH = os.path.expanduser("~/.cache/huggingface/lerobot/ports")
@@ -44,8 +44,8 @@ def setup_calibration_files(leader_config: str, follower_config: str):
     logger.info(f"Follower config exists: {os.path.exists(follower_config_full_path)}")
 
     # Create calibration directories if they don't exist
-    leader_calibration_dir = os.path.join(CALIBRATION_BASE_PATH_TELEOP, "so101_leader")
-    follower_calibration_dir = os.path.join(CALIBRATION_BASE_PATH_ROBOTS, "so101_follower")
+    leader_calibration_dir = LEADER_CONFIG_PATH
+    follower_calibration_dir = FOLLOWER_CONFIG_PATH
     os.makedirs(leader_calibration_dir, exist_ok=True)
     os.makedirs(follower_calibration_dir, exist_ok=True)
 
@@ -87,7 +87,7 @@ def setup_follower_calibration_file(follower_config: str):
     logger.info(f"Follower config exists: {os.path.exists(follower_config_full_path)}")
 
     # Create calibration directory if it doesn't exist
-    follower_calibration_dir = os.path.join(CALIBRATION_BASE_PATH_ROBOTS, "so101_follower")
+    follower_calibration_dir = FOLLOWER_CONFIG_PATH
     os.makedirs(follower_calibration_dir, exist_ok=True)
 
     # Copy calibration file to the correct location if it's not already there
@@ -145,31 +145,45 @@ def find_robot_port(robot_type="robot"):
     }
 
 
-def detect_port_after_disconnect(ports_before):
+def detect_port_after_disconnect(ports_before, timeout_s: float = 15.0, poll_interval_s: float = 0.3):
     """
-    Detect the port after disconnection by comparing with ports before
-    
+    Wait for the user to unplug the robot and detect which port disappeared.
+
+    Polls the available ports until exactly one entry from ``ports_before`` vanishes,
+    or until ``timeout_s`` elapses. Polling avoids racing the user — they may need
+    several seconds to physically pull the USB cable.
+
     Args:
         ports_before (list): List of ports before disconnection
-    
+        timeout_s (float): Maximum seconds to wait for a port to disappear
+        poll_interval_s (float): Seconds between checks
+
     Returns:
         str: The detected port
+
+    Raises:
+        OSError: If the timeout elapses with no change, or more than one port disappears.
     """
-    time.sleep(0.5)  # Allow some time for port to be released
-    ports_after = find_available_ports()
-    ports_diff = list(set(ports_before) - set(ports_after))
-    
-    logger.info(f"Ports after disconnecting: {ports_after}")
-    logger.info(f"Port difference: {ports_diff}")
-    
-    if len(ports_diff) == 1:
-        port = ports_diff[0]
-        logger.info(f"Detected port: {port}")
-        return port
-    elif len(ports_diff) == 0:
-        raise OSError("Could not detect the port. No difference was found.")
-    else:
-        raise OSError(f"Could not detect the port. More than one port was found ({ports_diff}).")
+    before_set = set(ports_before)
+    deadline = time.monotonic() + timeout_s
+    last_diff: list = []
+
+    while time.monotonic() < deadline:
+        ports_after = find_available_ports()
+        ports_diff = list(before_set - set(ports_after))
+        last_diff = ports_diff
+
+        if len(ports_diff) == 1:
+            port = ports_diff[0]
+            logger.info(f"Detected port: {port}")
+            return port
+        if len(ports_diff) > 1:
+            raise OSError(f"Could not detect the port. More than one port disappeared: {ports_diff}.")
+
+        time.sleep(poll_interval_s)
+
+    logger.info(f"Timed out waiting for unplug. Final diff: {last_diff}")
+    raise OSError("Timed out waiting for the robot to be unplugged. Please try again and unplug the USB cable when prompted.")
 
 
 def save_robot_port(robot_type, port):

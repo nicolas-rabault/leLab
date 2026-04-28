@@ -12,19 +12,19 @@ import traceback
 from dataclasses import asdict, dataclass
 from typing import Optional, Dict, Any
 
-from lerobot.common.robots import (
+from lerobot.robots import (
     Robot,
     RobotConfig,
     make_robot_from_config,
 )
-from lerobot.common.teleoperators import (
+from lerobot.teleoperators import (
     Teleoperator,
     TeleoperatorConfig,
     make_teleoperator_from_config,
 )
-from lerobot.common.motors import MotorCalibration
-from lerobot.common.motors.feetech import OperatingMode
-from lerobot.common.utils.utils import init_logging
+from lerobot.motors import MotorCalibration
+from lerobot.motors.feetech import OperatingMode
+from lerobot.utils.utils import init_logging
 
 logger = logging.getLogger(__name__)
 
@@ -239,13 +239,13 @@ class CalibrationManager:
             
             # Create device configuration
             if request.device_type == "robot":
-                from lerobot.common.robots.so101_follower import SO101FollowerConfig
+                from lerobot.robots.so_follower import SO101FollowerConfig
                 config = SO101FollowerConfig(
                     port=request.port,
                     id=request.config_file
                 )
             elif request.device_type == "teleop":
-                from lerobot.common.teleoperators.so101_leader import SO101LeaderConfig
+                from lerobot.teleoperators.so_leader import SO101LeaderConfig
                 config = SO101LeaderConfig(
                     port=request.port,
                     id=request.config_file

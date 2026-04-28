@@ -7,12 +7,13 @@ name = "LeLab"
 version = "0.1.0"
 description = "LeRobot Lab - A web interface for robotics with lerobot integration"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi[standard]>=0.115.12",
     "websockets>=15.0.1",
     "uvicorn>=0.24.0",
-    "lerobot @ git+https://github.com/huggingface/lerobot.git",
+    "psutil>=5.9.0",
+    "lerobot[core_scripts,feetech] @ git+https://github.com/huggingface/lerobot.git",
 ]
 
 [project.scripts]

@@ -187,7 +187,7 @@ class TrainingManager:
     
     def _build_training_command(self, request: TrainingRequest) -> list:
         """Build the training command from the request parameters - only using actual CLI parameters"""
-        cmd = ["python", "-m", "lerobot.scripts.train"]
+        cmd = ["python", "-m", "lerobot.scripts.lerobot_train"]
         
         # Dataset configuration
         cmd.extend(["--dataset.repo_id", request.dataset_repo_id])

@@ -6,10 +6,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import lerobot replay functionality directly
-from lerobot.replay import replay, ReplayConfig, DatasetReplayConfig
-from lerobot.common.robots import make_robot_from_config
-from lerobot.common.robots.so101_follower import SO101FollowerConfig
-from lerobot.common.robots.so100_follower import SO100FollowerConfig
+from lerobot.scripts.lerobot_replay import replay, ReplayConfig, DatasetReplayConfig
+from lerobot.robots import make_robot_from_config
+from lerobot.robots.so_follower import SO101FollowerConfig, SO100FollowerConfig
 
 # Import calibration setup from config
 from .config import setup_follower_calibration_file
@@ -130,7 +129,7 @@ def run_replay_directly(request: ReplayRequest):
             # Test a simple motor operation to ensure they're working
             try:
                 # Try to read current positions to verify motors are responsive
-                test_robot.bus.read("Present_Position")
+                test_robot.bus.sync_read("Present_Position")
                 logger.info(f"✅ Motors are responsive")
             except Exception as motor_test_error:
                 logger.error(f"❌ Motors not responsive: {motor_test_error}")

@@ -6,14 +6,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pydantic import BaseModel
 
 # Import the main record functionality to reuse it
-from lerobot.record import record, RecordConfig, DatasetRecordConfig
-from lerobot.common.robots.so101_follower import SO101FollowerConfig
-from lerobot.common.teleoperators.so101_leader import SO101LeaderConfig
-from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
-
-# Import for patching the keyboard listener
-from lerobot.common.utils import control_utils
-import functools
+from lerobot.scripts.lerobot_record import RecordConfig
+from lerobot.configs.dataset import DatasetRecordConfig
+from lerobot.robots.so_follower import SO101FollowerConfig
+from lerobot.teleoperators.so_leader import SO101LeaderConfig
+from lerobot.datasets import LeRobotDataset
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +67,7 @@ class DatasetInfoRequest(BaseModel):
 
 def create_record_config(request: RecordingRequest) -> RecordConfig:
     """Create a RecordConfig from the recording request"""
-    from lerobot.common.cameras.opencv.configuration_opencv import OpenCVCameraConfig
+    from lerobot.cameras.opencv import OpenCVCameraConfig
     
     # Setup calibration files
     leader_config_name, follower_config_name = setup_calibration_files(
@@ -151,6 +148,13 @@ def handle_start_recording(request: RecordingRequest, websocket_manager=None) ->
 
     try:
         import time
+        from datetime import datetime
+        # Stamp the repo_id with a timestamp (matches lerobot-record CLI behavior),
+        # so each session lands in a unique directory and the frontend gets the
+        # final id back in the response and status payload.
+        if not request.resume and request.dataset_repo_id:
+            request.dataset_repo_id = f"{request.dataset_repo_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
         logger.info(f"Starting recording for dataset: {request.dataset_repo_id}")
         logger.info(f"Task: {request.single_task}")
 
@@ -366,6 +370,11 @@ def handle_recording_status() -> Dict[str, Any]:
         "message": "Recording session failed with error - check logs" if current_phase == "error" else ("Recording session has ended - stop polling" if session_ended else "Recording status retrieved successfully")
     }
     
+    # Always echo the stamped dataset id whenever a config exists, so the frontend
+    # can read the actual on-disk repo_id (post stamp) for upload navigation.
+    if recording_config:
+        status["dataset_repo_id"] = recording_config.dataset_repo_id
+
     # Add episode information if recording is active
     if recording_active and recording_config:
         status["current_episode"] = current_episode
@@ -411,7 +420,7 @@ def handle_get_dataset_info(request: DatasetInfoRequest) -> Dict[str, Any]:
     """Get information about a saved dataset"""
     try:
         # Import LeRobotDataset to load the dataset
-        from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+        from lerobot.datasets import LeRobotDataset
         import time
         
         logger.info(f"Loading dataset {request.dataset_repo_id} to get info")
@@ -459,7 +468,7 @@ def handle_upload_dataset(request: UploadRequest) -> Dict[str, Any]:
     """Handle dataset upload to HuggingFace Hub"""
     try:
         # Import LeRobotDataset to load and upload the dataset
-        from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
+        from lerobot.datasets import LeRobotDataset
         
         logger.info(f"Loading dataset {request.dataset_repo_id} for upload")
         
@@ -488,6 +497,17 @@ def handle_upload_dataset(request: UploadRequest) -> Dict[str, Any]:
         logger.error(f"Error uploading dataset {request.dataset_repo_id}: {e}")
         import traceback
         logger.error(f"Full traceback: {traceback.format_exc()}")
+
+        err_text = str(e).lower()
+        looks_like_auth = any(
+            m in err_text for m in ("401", "you must be authenticated", "authentication required", "huggingfacehub_token")
+        )
+        if looks_like_auth:
+            return {
+                "success": False,
+                "message": "You're not logged into the Hugging Face Hub. Run `hf auth login` in your terminal, then retry.",
+                "docs_url": "https://huggingface.co/docs/huggingface_hub/en/quick-start#authentication",
+            }
         return {
             "success": False,
             "message": f"Failed to upload dataset: {str(e)}"
@@ -499,22 +519,21 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
     Implement recording with phase tracking - exactly mirrors original record() function behavior
     """
     import time
-    from lerobot.common.utils.utils import log_say
-    from lerobot.common.datasets.lerobot_dataset import LeRobotDataset
-    from lerobot.common.datasets.utils import hw_to_dataset_features
-    from lerobot.common.robots import make_robot_from_config
-    from lerobot.common.teleoperators import make_teleoperator_from_config
-    from lerobot.common.utils.control_utils import sanity_check_dataset_name, sanity_check_dataset_robot_compatibility
-    from lerobot.common.policies.factory import make_policy
-    from lerobot.common.datasets.image_writer import safe_stop_image_writer
-    
+    from lerobot.utils.utils import log_say
+    from lerobot.datasets import LeRobotDataset
+    from lerobot.utils.feature_utils import hw_to_dataset_features
+    from lerobot.robots import make_robot_from_config
+    from lerobot.teleoperators import make_teleoperator_from_config
+    from lerobot.common.control_utils import sanity_check_dataset_name, sanity_check_dataset_robot_compatibility
+    from lerobot.processor import make_default_processors
+    from lerobot.scripts.lerobot_record import record_loop
+
     global current_phase, phase_start_time, current_episode, saved_episodes
-    
-    # Import the record_loop function from lerobot.record
-    from lerobot.record import record_loop
-    
+
     robot = make_robot_from_config(cfg.robot)
     teleop = make_teleoperator_from_config(cfg.teleop) if cfg.teleop is not None else None
+
+    teleop_action_processor, robot_action_processor, robot_observation_processor = make_default_processors()
 
     action_features = hw_to_dataset_features(robot.action_features, "action", cfg.dataset.video)
     obs_features = hw_to_dataset_features(robot.observation_features, "observation", cfg.dataset.video)
@@ -532,7 +551,7 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
             )
         sanity_check_dataset_robot_compatibility(dataset, robot, cfg.dataset.fps, dataset_features)
     else:
-        sanity_check_dataset_name(cfg.dataset.repo_id, cfg.policy)
+        sanity_check_dataset_name(cfg.dataset.repo_id, None)
         dataset = LeRobotDataset.create(
             cfg.dataset.repo_id,
             cfg.dataset.fps,
@@ -543,9 +562,6 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
             image_writer_processes=cfg.dataset.num_image_writer_processes,
             image_writer_threads=cfg.dataset.num_image_writer_threads_per_camera * len(robot.cameras),
         )
-
-    # Load pretrained policy
-    policy = None if cfg.policy is None else make_policy(cfg.policy, ds_meta=dataset.meta)
 
     # 🔧 ROBOT CONNECTION: Connect with enhanced error handling for camera conflicts
     try:
@@ -616,14 +632,16 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
                 robot=robot,
                 events=web_events,
                 fps=cfg.dataset.fps,
+                teleop_action_processor=teleop_action_processor,
+                robot_action_processor=robot_action_processor,
+                robot_observation_processor=robot_observation_processor,
                 teleop=teleop,
-                policy=policy,
                 dataset=dataset,
                 control_time_s=cfg.dataset.episode_time_s,
                 single_task=cfg.dataset.single_task,
                 display_data=cfg.display_data,
             )
-            
+
             logger.info(f"Recording phase completed - events state: {web_events}")
             
             # Check if exit_early was triggered (use our tracking flag)
@@ -665,6 +683,9 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
                     robot=robot,
                     events=web_events,
                     fps=cfg.dataset.fps,
+                    teleop_action_processor=teleop_action_processor,
+                    robot_action_processor=robot_action_processor,
+                    robot_observation_processor=robot_observation_processor,
                     teleop=teleop,
                     # NOTE: NO dataset parameter here - matches LeRobot CLI exactly
                     # This means NO recording happens during reset phase
@@ -730,6 +751,9 @@ def record_with_web_events(cfg: RecordConfig, web_events: dict) -> LeRobotDatase
                     robot=robot,
                     events=web_events,
                     fps=cfg.dataset.fps,
+                    teleop_action_processor=teleop_action_processor,
+                    robot_action_processor=robot_action_processor,
+                    robot_observation_processor=robot_observation_processor,
                     teleop=teleop,
                     # NOTE: NO dataset parameter here - matches LeRobot CLI exactly
                     # This means NO recording happens during reset phase
